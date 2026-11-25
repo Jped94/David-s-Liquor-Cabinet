@@ -1,0 +1,10 @@
+# Real CellarTracker exports contain prices/locations — never commit
+*.csv
+!**/Fixtures/*.csv
+
+# Xcode
+xcuserdata/
+DerivedData/
+.build/
+*.xcuserstate
+.DS_Store
