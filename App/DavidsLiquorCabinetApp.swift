@@ -4,9 +4,13 @@ import SwiftUI
 struct DavidsLiquorCabinetApp: App {
     @State private var model = CollectionModel()
 
+    init() {
+        FontRegistrar.registerBundledFonts()
+    }
+
     var body: some Scene {
         WindowGroup {
-            MenuRootView()
+            RootView()
                 .environment(model)
         }
     }

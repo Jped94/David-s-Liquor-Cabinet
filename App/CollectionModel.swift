@@ -46,6 +46,28 @@ final class CollectionModel {
         MenuBuilder.categoryCounts(items)
     }
 
+    /// Open bottles for the cover, best community score first.
+    func featuredPours(_ count: Int) -> [MenuItem] {
+        let sorted = openedItems.sorted { a, b in
+            let scoreA = a.communityScore ?? 0
+            let scoreB = b.communityScore ?? 0
+            if scoreA != scoreB { return scoreA > scoreB }
+            return a.menuTitle.localizedStandardCompare(b.menuTitle) == .orderedAscending
+        }
+        return Array(sorted.prefix(count))
+    }
+
+    /// Every open bottle, grouped by spirit, for the "Tonight's Pours" page.
+    var openSections: [MenuSection] {
+        SpiritCategory.allCases.compactMap { category in
+            let items = openedItems
+                .filter { $0.category == category }
+                .sorted { $0.menuTitle.localizedStandardCompare($1.menuTitle) == .orderedAscending }
+            guard !items.isEmpty else { return nil }
+            return MenuSection(title: category == .scotch ? "Scotch Whisky" : category.displayName, items: items)
+        }
+    }
+
     func items(in category: SpiritCategory) -> [MenuItem] {
         items.filter { $0.category == category }
     }
