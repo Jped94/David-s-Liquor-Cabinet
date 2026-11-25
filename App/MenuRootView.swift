@@ -13,6 +13,8 @@ struct MenuRootView: View {
     @State private var section: MenuSection? = .nowPouring
     @State private var selectedItemID: MenuItem.ID?
     @State private var searchText = ""
+    @State private var showingSettings = false
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NavigationSplitView {
@@ -21,6 +23,7 @@ struct MenuRootView: View {
             ItemListView(items: visibleItems, selection: $selectedItemID)
                 .navigationTitle(listTitle)
                 .searchable(text: $searchText, prompt: "Search bottles")
+                .refreshable { await model.syncNow() }
         } detail: {
             if let item = model.items.first(where: { $0.id == selectedItemID }) {
                 ItemDetailView(item: item)
@@ -29,6 +32,13 @@ struct MenuRootView: View {
             }
         }
         .onChange(of: section) { selectedItemID = nil }
+        .task { await model.syncIfNeeded() }
+        .onChange(of: scenePhase) {
+            if scenePhase == .active { Task { await model.syncIfNeeded() } }
+        }
+        .sheet(isPresented: $showingSettings) {
+            SettingsView()
+        }
     }
 
     private var sidebar: some View {
@@ -46,14 +56,8 @@ struct MenuRootView: View {
                         .tag(MenuSection.category(entry.category))
                 }
             }
-            if let error = model.loadError {
-                Section { Text(error).foregroundStyle(.red) }
-            } else if model.isSampleData {
-                Section {
-                    Text("Showing sample data. CellarTracker sync comes next.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
+            Section {
+                SyncStatusView()
             }
         }
         .navigationTitle("Liquor Cabinet")
@@ -65,6 +69,13 @@ struct MenuRootView: View {
                     Text("All").tag(HouseFilter.all)
                 }
                 .pickerStyle(.menu)
+            }
+            ToolbarItem {
+                Button {
+                    showingSettings = true
+                } label: {
+                    Label("Settings", systemImage: "gearshape")
+                }
             }
         }
     }
@@ -85,6 +96,31 @@ struct MenuRootView: View {
         case .category(let category): return category.displayName
         case nil: return ""
         }
+    }
+}
+
+/// One-line sync status for the bottom of the sidebar.
+struct SyncStatusView: View {
+    @Environment(CollectionModel.self) private var model
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if model.isSyncing {
+                HStack(spacing: 6) {
+                    ProgressView()
+                    Text("Syncing with CellarTracker…")
+                }
+            } else if model.isSampleData {
+                Text("Showing sample data. Open Settings to connect CellarTracker.")
+            } else if let lastSynced = model.lastSynced {
+                Text("Synced \(lastSynced.formatted(.relative(presentation: .named)))")
+            }
+            if let error = model.syncError {
+                Text(error).foregroundStyle(.red)
+            }
+        }
+        .font(.footnote)
+        .foregroundStyle(.secondary)
     }
 }
 

@@ -23,8 +23,8 @@ public struct MenuItem: Sendable, Hashable, Identifiable {
     public var vintage: Int? { representative.vintage }
     public var category: SpiritCategory { rules.category }
 
-    public var bottleCount: Int { bottles.count }
-    public var openedCount: Int { bottles.filter(RuleEnricher.isOpened).count }
+    public var bottleCount: Int { bottles.reduce(0) { $0 + $1.quantity } }
+    public var openedCount: Int { bottles.filter(RuleEnricher.isOpened).reduce(0) { $0 + $1.quantity } }
     public var isOpened: Bool { openedCount > 0 }
     public var isLastBottle: Bool { bottleCount == 1 }
 

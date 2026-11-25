@@ -83,7 +83,7 @@ use three layers. The highest one that has a value wins:
 
 This keeps runtime behaviour deterministic. Each expression is enriched exactly
 once, the output is constrained to a JSON schema, and the result is stored in
-SwiftData. Displaying the menu never calls the LLM, and re-syncing doesn't
+a local JSON file. Displaying the menu never calls the LLM, and re-syncing doesn't
 re-enrich existing items. Only new `iWine`s found during a sync are queued.
 
 **Claude call** (raw `URLSession` → `POST https://api.anthropic.com/v1/messages`;
@@ -143,16 +143,19 @@ DavidsLiquorCabinet/            Xcode project (iPadOS 17+, SwiftUI)
 └── Packages/CellarKit/         Local Swift package (unit-tested)
     ├── CellarTrackerClient     URLSession fetch, auth/HTML detection, retries
     ├── CSVParser               RFC-4180 parser, windows-1252 decoding
-    ├── Models                  Bottle (row) → Expression (grouped by iWine)
+    ├── Models                  BottleRecord (row) → MenuItem (grouped by iWine)
     ├── Enrichment              Rules (category/region/ABV/age/opened)
     │                           + ClaudeEnricher (Messages API, JSON schema)
-    └── Store                   SwiftData persistence + sync merge
+    └── Sync                    CellarTracker client, JSON snapshot cache, sync policy
 ```
 
-- **SwiftData** caches the synced collection plus a separate `Override` model
-  keyed by `iWine`, holding description, photo, category, featured and hidden.
-  Overrides survive resyncs. Bottles that disappear from CT drop off the menu,
-  but their overrides are kept in case the bottles come back.
+- **JSON files** in Application Support hold the cache. `collection.json` is
+  the last good CellarTracker download, and the menu opens from it instantly
+  and offline. Overrides (and later Claude enrichment) are stored separately,
+  keyed by `iWine`, so they survive resyncs. Bottles that disappear from CT
+  drop off the menu, but their overrides are kept in case the bottles come
+  back. This replaced the original SwiftData plan: the data is about 1,600
+  read-only rows, so a file is simpler and can be tested on Linux.
 - **Keychain** holds the CT credentials and the admin PIN.
 - **No backend.** The app talks to CellarTracker directly over HTTPS.
 - A sanitized CSV fixture (prices and stores stripped) drives the parser and
@@ -180,9 +183,9 @@ extra code is needed.
 
 ## Phases
 
-1. **Foundation**: Xcode project, CellarKit package, CSV parser +
+1. **Foundation** ✅: Xcode project, CellarKit package, CSV parser +
    windows-1252 + enrichment, with tests against the sample fixture.
-2. **Sync**: CellarTracker client, Keychain login, SwiftData store, refresh,
+2. **Sync** (in progress): CellarTracker client, Keychain login, JSON cache, refresh,
    error states (bad login, offline, CT down), house filtering.
 2b. **Claude enrichment**: enrichment queue for new `iWine`s, schema-constrained
    calls, stored results, an admin "Regenerate" action, and description switches.

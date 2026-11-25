@@ -4,24 +4,43 @@ import Observation
 
 /// App-wide collection state.
 ///
-/// Phase 1 loads the bundled sample export. Phase 2 replaces this with the
-/// CellarTracker sync and a SwiftData cache.
+/// On launch it shows the cached CellarTracker snapshot if there is one,
+/// otherwise the bundled sample data. With a saved login it syncs when the
+/// cache is more than a day old, and on demand.
 @Observable
 @MainActor
 final class CollectionModel {
+    enum Source { case sample, cellarTracker }
+
     private(set) var bottles: [BottleRecord] = []
     private(set) var items: [MenuItem] = []
-    private(set) var loadError: String?
-    let isSampleData = true
+    private(set) var source: Source = .sample
+    private(set) var lastSynced: Date?
+    private(set) var isSyncing = false
+    private(set) var syncError: String?
+    private(set) var hasCredentials = false
 
     var mapping = HouseMapping.default { didSet { rebuild() } }
     var house: HouseFilter = .house(.bedford) { didSet { rebuild() } }
 
+    private let sync: CollectionSync?
+
     init() {
-        loadSample()
+        sync = (try? SnapshotStore.defaultStore()).map { CollectionSync(store: $0) }
+        hasCredentials = CredentialStore.load() != nil
+        if hasCredentials, let snapshot = sync?.cachedSnapshot() {
+            apply(snapshot)
+        } else {
+            loadSample()
+        }
     }
 
+    // MARK: Derived data
+
+    var isSampleData: Bool { source == .sample }
     var openedItems: [MenuItem] { items.filter(\.isOpened) }
+    var totalBottles: Int { bottles.reduce(0) { $0 + $1.quantity } }
+    var unmappedLocations: [String] { mapping.unmappedLocations(in: bottles.filter { !$0.isPending }) }
 
     var categoryCounts: [(category: SpiritCategory, count: Int)] {
         MenuBuilder.categoryCounts(items)
@@ -41,17 +60,85 @@ final class CollectionModel {
         }
     }
 
+    // MARK: Sync
+
+    /// Downloads only if the cache is missing or more than a day old.
+    func syncIfNeeded() async {
+        await runSync(force: false)
+    }
+
+    /// Always downloads.
+    func syncNow() async {
+        await runSync(force: true)
+    }
+
+    /// Checks the login by downloading the collection, and saves it to the
+    /// Keychain only if that works. Returns whether it worked.
+    func signIn(_ credentials: CellarTrackerCredentials) async -> Bool {
+        guard let sync, !isSyncing else { return false }
+        isSyncing = true
+        defer { isSyncing = false }
+        do {
+            let snapshot = try await sync.sync(credentials: credentials, force: true)
+            try CredentialStore.save(credentials)
+            hasCredentials = true
+            syncError = nil
+            apply(snapshot)
+            return true
+        } catch {
+            syncError = Self.message(for: error)
+            return false
+        }
+    }
+
+    /// Forgets the login and the cached collection, and goes back to sample data.
+    func signOut() {
+        CredentialStore.delete()
+        try? sync?.store.delete()
+        hasCredentials = false
+        syncError = nil
+        lastSynced = nil
+        loadSample()
+    }
+
+    private func runSync(force: Bool) async {
+        guard let sync, !isSyncing, let credentials = CredentialStore.load() else { return }
+        isSyncing = true
+        defer { isSyncing = false }
+        do {
+            apply(try await sync.sync(credentials: credentials, force: force))
+            syncError = nil
+        } catch {
+            syncError = Self.message(for: error)
+        }
+    }
+
+    private static func message(for error: Error) -> String {
+        (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+    }
+
+    // MARK: Loading
+
+    private func apply(_ snapshot: CollectionSnapshot) {
+        bottles = snapshot.bottles
+        lastSynced = snapshot.fetchedAt
+        source = .cellarTracker
+        rebuild()
+    }
+
     private func loadSample() {
-        guard let url = Bundle.main.url(forResource: "sample_export", withExtension: "csv") else {
-            loadError = "The bundled sample data is missing."
+        source = .sample
+        guard let url = Bundle.main.url(forResource: "sample_export", withExtension: "csv"),
+              let data = try? Data(contentsOf: url),
+              let sample = try? ExportDecoder.decodeBottles(data)
+        else {
+            bottles = []
+            syncError = "The bundled sample data couldn't be loaded."
+            rebuild()
             return
         }
-        do {
-            bottles = try ExportDecoder.decodeBottles(Data(contentsOf: url))
-            rebuild()
-        } catch {
-            loadError = "Couldn't read the sample data: \(error)"
-        }
+        bottles = sample
+        rebuild()
     }
 
     private func rebuild() {

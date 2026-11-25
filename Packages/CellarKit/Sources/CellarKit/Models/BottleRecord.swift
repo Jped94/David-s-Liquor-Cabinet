@@ -5,7 +5,7 @@ import Foundation
 /// Fields are read by column name, so the column order doesn't matter and
 /// missing columns just come through empty. CellarTracker's "Unknown"
 /// placeholder is turned into `nil`.
-public struct BottleRecord: Sendable, Hashable, Identifiable {
+public struct BottleRecord: Sendable, Hashable, Identifiable, Codable {
     /// CellarTracker's per-bottle ID (`iInventory`).
     public var inventoryID: String
     /// CellarTracker's per-expression ID (`iWine`), shared by every bottle
@@ -38,6 +38,9 @@ public struct BottleRecord: Sendable, Hashable, Identifiable {
     public var note: String?
     /// Logged as purchased but not yet marked delivered.
     public var isPending: Bool
+    /// How many bottles this row stands for. CT's per-bottle export has one
+    /// row per bottle (1); an aggregated export may carry a `Quantity` column.
+    public var quantity: Int
 
     // Financials: admin only, never shown to guests.
     public var currency: String?
@@ -72,6 +75,7 @@ public struct BottleRecord: Sendable, Hashable, Identifiable {
         bin: String? = nil,
         note: String? = nil,
         isPending: Bool = false,
+        quantity: Int = 1,
         currency: String? = nil,
         value: Decimal? = nil,
         price: Decimal? = nil,
@@ -99,6 +103,7 @@ public struct BottleRecord: Sendable, Hashable, Identifiable {
         self.bin = bin
         self.note = note
         self.isPending = isPending
+        self.quantity = quantity
         self.currency = currency
         self.value = value
         self.price = price
@@ -129,6 +134,10 @@ public struct BottleRecord: Sendable, Hashable, Identifiable {
         func int(_ key: String) -> Int? { text(key).flatMap { Int($0) } }
 
         guard let wineID = text("iWine"), let name = text("Wine") else { return nil }
+        // The Bottles table also lists consumed bottles (BottleState 0).
+        if text("BottleState") == "0" { return nil }
+        let quantity = int("Quantity") ?? 1
+        if quantity < 1 { return nil }
 
         let vintage = int("Vintage")
         let noteCount = int("CNotes")
@@ -152,6 +161,7 @@ public struct BottleRecord: Sendable, Hashable, Identifiable {
             bin: text("Bin"),
             note: text("Note"),
             isPending: text("Pending") == "1",
+            quantity: quantity,
             currency: text("Currency"),
             value: decimal("Value"),
             price: decimal("Price"),
