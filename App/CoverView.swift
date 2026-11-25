@@ -8,9 +8,12 @@ struct CoverView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var selected: MenuItem?
     @State private var showingSettings = false
+    @State private var choosingLocationsFor: House?
 
     /// How many open bottles the cover lists.
     private let poursShown = 6
+    /// How many new arrivals the cover lists.
+    private let arrivalsShown = 4
 
     var body: some View {
         ScrollView {
@@ -20,12 +23,16 @@ struct CoverView: View {
                 if sizeClass == .compact {
                     VStack(spacing: 40) {
                         poursColumn
+                        arrivalsBlock
                         listColumn
                     }
                 } else {
                     HStack(alignment: .top, spacing: 0) {
-                        poursColumn
-                            .padding(.trailing, 36)
+                        VStack(spacing: 0) {
+                            poursColumn
+                            arrivalsBlock
+                        }
+                        .padding(.trailing, 36)
                         Rectangle().fill(Theme.rule).frame(width: 1)
                         listColumn
                             .padding(.leading, 36)
@@ -49,6 +56,9 @@ struct CoverView: View {
         .sheet(isPresented: $showingSettings) {
             SettingsView()
         }
+        .sheet(item: $choosingLocationsFor) { house in
+            LocationsSheet(house: house)
+        }
     }
 
     // MARK: Top bar
@@ -62,12 +72,25 @@ struct CoverView: View {
                     Text("Estancia").tag(HouseFilter.house(.estancia))
                     Text("Both houses").tag(HouseFilter.all)
                 }
+                if case .house(let house) = model.house {
+                    Button {
+                        choosingLocationsFor = house
+                    } label: {
+                        Label("Choose \(house.name) locations…", systemImage: "checklist")
+                    }
+                }
             } label: {
                 HStack(spacing: 6) {
                     CapsLabel(houseName, size: 15)
                     Image(systemName: "chevron.down")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(Theme.accent)
+                    if let locationSummary {
+                        Text(locationSummary)
+                            .font(Theme.italic(16))
+                            .foregroundStyle(Theme.muted)
+                            .padding(.leading, 4)
+                    }
                 }
                 .frame(minHeight: 44)
             }
@@ -93,6 +116,14 @@ struct CoverView: View {
             }
             .accessibilityLabel("Settings")
         }
+    }
+
+    /// "3 of 5 locations" when some of the house's locations are hidden.
+    private var locationSummary: String? {
+        guard case .house(let house) = model.house else { return nil }
+        let all = model.locations(for: house)
+        let shown = all.filter(model.isLocationShown).count
+        return shown == all.count ? nil : "\(shown) of \(all.count) locations"
     }
 
     private var houseName: String {
@@ -146,6 +177,29 @@ struct CoverView: View {
         .frame(maxWidth: .infinity, alignment: .top)
     }
 
+    /// Recently bought bottles, under Tonight's Pours.
+    @ViewBuilder
+    private var arrivalsBlock: some View {
+        let arrivals = model.newArrivals
+        if !arrivals.isEmpty {
+            VStack(spacing: 16) {
+                columnHeading("New Arrivals", caption: "Last \(model.newArrivalDays) days")
+                VStack(alignment: .leading, spacing: 16) {
+                    ForEach(arrivals.prefix(arrivalsShown)) { item in
+                        MenuEntryView(item: item, showsCategory: true) { selected = item }
+                    }
+                }
+                if arrivals.count > arrivalsShown {
+                    NavigationLink(value: Route.newArrivals) {
+                        CapsLabel("All \(arrivals.count) new arrivals →", size: 14)
+                            .frame(minHeight: 44)
+                    }
+                }
+            }
+            .padding(.top, 24)
+        }
+    }
+
     private var listColumn: some View {
         VStack(spacing: 16) {
             columnHeading("The List", caption: "By spirit")
@@ -196,8 +250,6 @@ struct CoverSyncStatus: View {
                 }
             } else if model.isSampleData {
                 Text("Showing sample data. Connect CellarTracker in Settings.")
-            } else if let lastSynced = model.lastSynced {
-                Text("Updated \(lastSynced.formatted(.relative(presentation: .named)))")
             }
             if let error = model.syncError {
                 Text(error).foregroundStyle(Theme.accent)

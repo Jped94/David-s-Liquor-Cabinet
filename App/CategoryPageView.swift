@@ -5,21 +5,25 @@ import SwiftUI
 /// laid out in two columns.
 struct CategoryPageView: View {
     let title: String
+    /// Label for the grouped ordering ("By region"), when the page offers a
+    /// choice between that and A–Z.
+    var groupedLabel: String? = nil
     /// Computes the sections from the model, so the page updates after a sync
     /// or a house change.
-    let sections: @MainActor (CollectionModel) -> [MenuSection]
+    let sections: @MainActor (CollectionModel, MenuOrdering) -> [MenuSection]
 
     @Environment(CollectionModel.self) private var model
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var openOnly = false
     @State private var selected: MenuItem?
     @State private var activeSection: String?
+    @State private var ordering: MenuOrdering = .grouped
 
     /// Section buttons are shown only when there are a manageable number.
     private let maxSectionButtons = 24
 
     var body: some View {
-        let all = sections(model)
+        let all = sections(model, ordering)
         let visible = filtered(all)
         let total = all.reduce(0) { $0 + $1.items.count }
 
@@ -98,13 +102,24 @@ struct CategoryPageView: View {
                 .overlay(alignment: .top) { Rectangle().fill(Theme.rule).frame(height: 1) }
                 .overlay(alignment: .bottom) { Rectangle().fill(Theme.rule).frame(height: 1) }
             }
-            Toggle(isOn: $openOnly) {
-                CapsLabel("Open bottles only", color: Theme.muted, size: 13)
+            HStack {
+                if let groupedLabel {
+                    Picker("Order", selection: $ordering) {
+                        Text(groupedLabel).tag(MenuOrdering.grouped)
+                        Text("A–Z").tag(MenuOrdering.alphabetical)
+                    }
+                    .pickerStyle(.segmented)
+                    .fixedSize()
+                    .onChange(of: ordering) { activeSection = nil }
+                }
+                Spacer()
+                Toggle(isOn: $openOnly) {
+                    CapsLabel("Open bottles only", color: Theme.muted, size: 13)
+                }
+                .toggleStyle(.switch)
+                .tint(Theme.accent)
+                .fixedSize()
             }
-            .toggleStyle(.switch)
-            .tint(Theme.accent)
-            .fixedSize()
-            .frame(maxWidth: .infinity, alignment: .trailing)
         }
     }
 

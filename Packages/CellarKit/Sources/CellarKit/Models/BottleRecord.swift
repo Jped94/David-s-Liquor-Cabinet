@@ -173,3 +173,16 @@ public struct BottleRecord: Sendable, Hashable, Identifiable, Codable {
         )
     }
 }
+
+extension BottleRecord {
+    /// `purchaseDate` ("9/27/2026", CT's US month/day/year format) as a
+    /// calendar day in UTC, or `nil` if missing or unreadable.
+    public var purchaseDay: Date? {
+        guard let text = purchaseDate else { return nil }
+        let parts = text.split(separator: " ").first?.split(separator: "/").compactMap { Int($0) } ?? []
+        guard parts.count == 3, (1...12).contains(parts[0]), (1...31).contains(parts[1]), parts[2] > 1900 else { return nil }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        return calendar.date(from: DateComponents(year: parts[2], month: parts[0], day: parts[1]))
+    }
+}

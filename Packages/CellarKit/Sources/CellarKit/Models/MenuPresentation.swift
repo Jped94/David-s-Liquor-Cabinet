@@ -6,11 +6,16 @@ extension MenuItem {
     /// The bold first line of a menu entry: producer plus age statement,
     /// e.g. "Ardbeg 22 Year Old", or producer plus a short expression name,
     /// e.g. "WhistlePig The Boss Hog XI".
-    public var menuTitle: String { MenuWording.split(self).title }
+    public var menuTitle: String {
+        override?.title?.nonBlank ?? MenuWording.split(self).title
+    }
 
     /// The second line: the rest of the expression name and the vintage,
     /// e.g. "Manager's Choice Cask #2391 Sherry · Vintage 1976".
-    public var menuSubtitle: String? { MenuWording.split(self).subtitle }
+    public var menuSubtitle: String? {
+        if let subtitle = override?.subtitle { return subtitle.nonBlank }
+        return MenuWording.split(self).subtitle
+    }
 }
 
 enum MenuWording {
@@ -81,14 +86,36 @@ public struct MenuSection: Identifiable, Sendable, Hashable {
     }
 }
 
+/// How a category page is arranged.
+public enum MenuOrdering: String, Sendable, CaseIterable {
+    /// Scotch by region, rum by country, agave by spirit.
+    case grouped
+    /// A–Z by name.
+    case alphabetical
+}
+
 public enum MenuSections {
+    /// Categories whose grouped layout differs from A–Z, with the label for
+    /// the grouped option, e.g. "By region".
+    public static func groupedLabel(for category: SpiritCategory) -> String? {
+        switch category {
+        case .scotch: "By region"
+        case .rum: "By country"
+        default: nil
+        }
+    }
+
     /// Categories this small are shown as one list without section headings.
     public static let singleSectionLimit = 20
 
     /// Groups a category's items the way a printed menu would:
     /// Scotch by region, agave by spirit, rum by country, everything else
     /// alphabetically. Items within a section are sorted by `menuTitle`.
-    public static func sections(for category: SpiritCategory, items: [MenuItem]) -> [MenuSection] {
+    public static func sections(
+        for category: SpiritCategory,
+        items: [MenuItem],
+        ordering: MenuOrdering = .grouped
+    ) -> [MenuSection] {
         let sorted = items.sorted {
             $0.menuTitle.localizedStandardCompare($1.menuTitle) == .orderedAscending
         }
@@ -96,10 +123,14 @@ public enum MenuSections {
             return sorted.isEmpty ? [] : [MenuSection(title: category.displayName, items: sorted)]
         }
 
+        if ordering == .alphabetical {
+            return grouped(sorted, order: nil) { initial(of: $0.menuTitle) }
+        }
+
         switch category {
         case .scotch:
             let order = ScotchRegion.allCases.map(\.displayName) + ["Scotland"]
-            return grouped(sorted, order: order) { $0.rules.scotchRegion?.displayName ?? "Scotland" }
+            return grouped(sorted, order: order) { $0.scotchRegion?.displayName ?? "Scotland" }
         case .agave:
             return grouped(sorted, order: ["Tequila", "Mezcal", "Other Agave"]) { agaveKind($0) }
         case .rum:

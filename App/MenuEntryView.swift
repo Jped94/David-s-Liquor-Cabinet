@@ -7,6 +7,7 @@ import SwiftUI
 ///     Manager's Choice Cask #2391 Sherry · Vintage 1976
 ///     ● OPEN   LAST BOTTLE
 struct MenuEntryView: View {
+    @Environment(CollectionModel.self) private var model
     let item: MenuItem
     /// Adds the category and origin to the second line (used on the cover,
     /// where entries from every category are mixed).
@@ -23,7 +24,7 @@ struct MenuEntryView: View {
                         .multilineTextAlignment(.leading)
                         .layoutPriority(1)
                     DottedLeader()
-                    if let abv = item.rules.abv {
+                    if let abv = item.abv {
                         Text(Format.abv(abv))
                             .font(Theme.body(16))
                             .foregroundStyle(Theme.ink)
@@ -35,10 +36,12 @@ struct MenuEntryView: View {
                         .foregroundStyle(Theme.muted)
                         .multilineTextAlignment(.leading)
                 }
-                if item.isOpened || item.isLastBottle {
+                if item.isOpened || item.bottleCount > 1 || item.isHidden || model.isNewArrival(item) {
                     HStack(spacing: 14) {
+                        if model.isNewArrival(item) { CapsLabel("New", size: 12) }
                         if item.isOpened { CapsLabel("● Open", size: 12) }
-                        if item.isLastBottle { CapsLabel("Last bottle", color: Theme.muted, size: 12) }
+                        if item.bottleCount > 1 { CapsLabel("\(item.bottleCount) bottles", color: Theme.muted, size: 12) }
+                        if item.isHidden { CapsLabel("Hidden from menu", color: Theme.muted, size: 12) }
                     }
                     .padding(.top, 2)
                 }
@@ -53,7 +56,7 @@ struct MenuEntryView: View {
 
     private var subtitle: String? {
         guard showsCategory else { return item.menuSubtitle }
-        let place = [item.category.displayName, item.rules.scotchRegion?.displayName ?? item.region]
+        let place = [item.category.displayName, item.scotchRegion?.displayName ?? item.region]
             .compactMap { $0 }
             .joined(separator: ", ")
         return [item.menuSubtitle, place].compactMap { $0 }.joined(separator: " · ")

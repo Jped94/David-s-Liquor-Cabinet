@@ -15,6 +15,8 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 cellarTrackerSection
+                menuSection
+                adminSection
                 collectionSection
             }
             .navigationTitle("Settings")
@@ -81,6 +83,32 @@ struct SettingsView: View {
             Text("CellarTracker")
         } footer: {
             Text("The login is stored only on this iPad, in the Keychain. CellarTracker has no read-only logins, so this is the account's full password.")
+        }
+    }
+
+    private var menuSection: some View {
+        @Bindable var model = model
+        return Section {
+            Picker("New arrivals", selection: $model.newArrivalDays) {
+                ForEach(CollectionModel.newArrivalChoices, id: \.self) { days in
+                    Text("Last \(days) days").tag(days)
+                }
+            }
+        } header: {
+            Text("Menu")
+        } footer: {
+            Text("Bottles count as new arrivals for this long after their CellarTracker purchase date.")
+        }
+    }
+
+    private var adminSection: some View {
+        @Bindable var model = model
+        return Section {
+            Toggle("Admin mode", isOn: $model.isAdmin)
+        } header: {
+            Text("Admin")
+        } footer: {
+            Text("Shows an Edit button on each bottle's card, and hidden bottles on the menu. Turns off when the app is closed.")
         }
     }
 

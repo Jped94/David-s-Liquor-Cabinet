@@ -23,10 +23,33 @@ final class CollectionModel {
     var mapping = HouseMapping.default { didSet { rebuild() } }
     var house: HouseFilter = .house(.bedford) { didSet { rebuild() } }
 
+    /// Admin mode: shows hidden items and the Edit button. Turned on in
+    /// Settings; resets when the app is relaunched.
+    var isAdmin = false { didSet { rebuild() } }
+
+    /// How many days after purchase a bottle counts as a new arrival.
+    var newArrivalDays: Int = MenuItem.newArrivalDays {
+        didSet { UserDefaults.standard.set(newArrivalDays, forKey: Self.newArrivalDaysKey) }
+    }
+    static let newArrivalChoices = [30, 60, 90, 180]
+    private static let newArrivalDaysKey = "newArrivalDays"
+
+    /// The owner's edits, keyed by iWine.
+    private(set) var overrides: [String: ItemOverride] = [:]
+    /// Locations left off the menu (normalized names), remembered on this iPad.
+    private(set) var hiddenLocations: Set<String> = []
+
     private let sync: CollectionSync?
+    private let overrideStore: OverrideStore?
+    private static let hiddenLocationsKey = "hiddenLocations"
 
     init() {
         sync = (try? SnapshotStore.defaultStore()).map { CollectionSync(store: $0) }
+        overrideStore = try? OverrideStore.defaultStore()
+        overrides = (try? overrideStore?.load()) ?? [:]
+        hiddenLocations = Set(UserDefaults.standard.stringArray(forKey: Self.hiddenLocationsKey) ?? [])
+        let savedDays = UserDefaults.standard.integer(forKey: Self.newArrivalDaysKey)
+        if Self.newArrivalChoices.contains(savedDays) { newArrivalDays = savedDays }
         hasCredentials = CredentialStore.load() != nil
         if hasCredentials, let snapshot = sync?.cachedSnapshot() {
             apply(snapshot)
@@ -57,6 +80,17 @@ final class CollectionModel {
         return Array(sorted.prefix(count))
     }
 
+    func isNewArrival(_ item: MenuItem) -> Bool {
+        item.isNewArrival(within: newArrivalDays)
+    }
+
+    /// Bottles bought within the new-arrival window, newest first.
+    var newArrivals: [MenuItem] {
+        items
+            .filter { isNewArrival($0) }
+            .sorted { ($0.latestPurchase ?? .distantPast) > ($1.latestPurchase ?? .distantPast) }
+    }
+
     /// Every open bottle, grouped by spirit, for the "Tonight's Pours" page.
     var openSections: [MenuSection] {
         SpiritCategory.allCases.compactMap { category in
@@ -76,10 +110,48 @@ final class CollectionModel {
         let query = query.trimmingCharacters(in: .whitespaces)
         guard !query.isEmpty else { return items }
         return items.filter { item in
-            [item.name, item.producer, item.originLine, item.rules.style]
+            [item.name, item.menuTitle, item.producer, item.originLine, item.style]
                 .compactMap { $0 }
                 .contains { $0.localizedCaseInsensitiveContains(query) }
         }
+    }
+
+    // MARK: Locations
+
+    /// The locations of a house that have bottles, most bottles first.
+    func locations(for house: House) -> [String] {
+        mapping.locations(for: house, in: bottles)
+    }
+
+    func isLocationShown(_ location: String) -> Bool {
+        !hiddenLocations.contains(HouseMapping.normalize(location))
+    }
+
+    func setLocation(_ location: String, shown: Bool) {
+        let key = HouseMapping.normalize(location)
+        if shown { hiddenLocations.remove(key) } else { hiddenLocations.insert(key) }
+        UserDefaults.standard.set(Array(hiddenLocations).sorted(), forKey: Self.hiddenLocationsKey)
+        rebuild()
+    }
+
+    // MARK: Edits
+
+    /// The current version of an item (e.g. after an edit or a sync).
+    func item(id: MenuItem.ID) -> MenuItem? {
+        items.first { $0.id == id }
+    }
+
+    /// Saves the owner's edit for an item. `nil` or an empty edit removes it.
+    func saveOverride(_ override: ItemOverride?, for id: MenuItem.ID) throws {
+        var updated = overrides
+        if let override, !override.isEmpty {
+            updated[id] = override
+        } else {
+            updated[id] = nil
+        }
+        try overrideStore?.save(updated)
+        overrides = updated
+        rebuild()
     }
 
     // MARK: Sync
@@ -164,6 +236,13 @@ final class CollectionModel {
     }
 
     private func rebuild() {
-        items = MenuBuilder.items(from: bottles, filter: house, mapping: mapping)
+        items = MenuBuilder.items(
+            from: bottles,
+            filter: house,
+            mapping: mapping,
+            hiddenLocations: hiddenLocations,
+            overrides: overrides,
+            includeHidden: isAdmin
+        )
     }
 }

@@ -25,7 +25,8 @@ public struct HouseMapping: Hashable, Codable, Sendable {
         for (location, house) in assignments { assign(location, to: house) }
     }
 
-    static func normalize(_ location: String) -> String {
+    /// Lowercased and trimmed, the form locations are compared in.
+    public static func normalize(_ location: String) -> String {
         location.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
@@ -46,6 +47,22 @@ public struct HouseMapping: Hashable, Codable, Sendable {
     public func unmappedLocations(in bottles: [BottleRecord]) -> [String] {
         let unmapped = bottles.compactMap(\.location).filter { house(forLocation: $0) == nil }
         return Array(Set(unmapped)).sorted()
+    }
+
+    /// The distinct locations in `bottles` that belong to `house`, most
+    /// bottles first. Pending bottles are ignored.
+    public func locations(for house: House, in bottles: [BottleRecord]) -> [String] {
+        var counts: [String: Int] = [:]
+        var names: [String: String] = [:]
+        for bottle in bottles where !bottle.isPending {
+            guard let location = bottle.location, self.house(forLocation: location) == house else { continue }
+            let key = Self.normalize(location)
+            counts[key, default: 0] += bottle.quantity
+            if names[key] == nil { names[key] = location }
+        }
+        return counts.keys
+            .sorted { (counts[$0] ?? 0, $1) > (counts[$1] ?? 0, $0) }
+            .compactMap { names[$0] }
     }
 
     /// The default mapping for David's collection.

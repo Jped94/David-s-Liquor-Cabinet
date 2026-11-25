@@ -13,17 +13,27 @@ public enum MenuBuilder {
     /// Groups bottles by `iWine`, applies rule enrichment, and filters by house.
     ///
     /// - Parameters:
+    ///   - hiddenLocations: CT locations to leave out (matched like the
+    ///     house mapping: case and surrounding spaces don't matter).
+    ///   - overrides: The owner's edits, keyed by `iWine`.
     ///   - includePending: Pending ("on order") bottles are left out unless
     ///     this is true. Guests never see them.
+    ///   - includeHidden: Items the owner hid are left out unless this is
+    ///     true (admin mode).
     /// - Returns: Menu items sorted by name.
     public static func items(
         from bottles: [BottleRecord],
         filter: HouseFilter = .all,
         mapping: HouseMapping = .default,
-        includePending: Bool = false
+        hiddenLocations: Set<String> = [],
+        overrides: [String: ItemOverride] = [:],
+        includePending: Bool = false,
+        includeHidden: Bool = false
     ) -> [MenuItem] {
+        let hidden = Set(hiddenLocations.map(HouseMapping.normalize))
         let visible = bottles.filter { bottle in
             if bottle.isPending && !includePending { return false }
+            if let location = bottle.location, hidden.contains(HouseMapping.normalize(location)) { return false }
             switch filter {
             case .all: return true
             case .house(let house): return mapping.house(forLocation: bottle.location) == house
@@ -40,7 +50,8 @@ public enum MenuBuilder {
         return order
             .compactMap { id -> MenuItem? in
                 guard let group = groups[id], let first = group.first else { return nil }
-                return MenuItem(id: id, bottles: group, rules: RuleEnricher.enrich(first))
+                let item = MenuItem(id: id, bottles: group, rules: RuleEnricher.enrich(first), override: overrides[id])
+                return item.isHidden && !includeHidden ? nil : item
             }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
