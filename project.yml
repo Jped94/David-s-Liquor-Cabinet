@@ -1,0 +1,44 @@
+# XcodeGen spec. Generate the Xcode project with:
+#   brew install xcodegen && xcodegen generate
+# The generated DavidsLiquorCabinet.xcodeproj is git-ignored. This file is the source of truth.
+name: DavidsLiquorCabinet
+options:
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+
+packages:
+  CellarKit:
+    path: Packages/CellarKit
+
+targets:
+  DavidsLiquorCabinet:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+      # Sanitized sample data so the app has something to show before the
+      # CellarTracker sync exists (phase 2).
+      - path: Packages/CellarKit/Tests/CellarKitTests/Fixtures/sample_export.csv
+        buildPhase: resources
+    dependencies:
+      - package: CellarKit
+    scheme: {}
+    settings:
+      base:
+        # Change this to an identifier under your Apple Developer account.
+        PRODUCT_BUNDLE_IDENTIFIER: com.jped94.liquorcabinet
+        # Set your team in Xcode (Signing & Capabilities) or put the team ID here.
+        DEVELOPMENT_TEAM: ""
+        CODE_SIGN_STYLE: Automatic
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "6.0"
+        TARGETED_DEVICE_FAMILY: "2" # iPad only
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Liquor Cabinet
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: >-
+          UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown
+          UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
