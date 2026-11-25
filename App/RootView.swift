@@ -5,7 +5,6 @@ import SwiftUI
 enum Route: Hashable {
     case category(SpiritCategory)
     case openBottles
-    case newArrivals
     case search
 }
 
@@ -32,11 +31,6 @@ struct RootView: View {
                         CategoryPageView(title: "Tonight's Pours", sections: { model, _ in
                             model.openSections
                         })
-                    case .newArrivals:
-                        CategoryPageView(title: "New Arrivals", sections: { model, _ in
-                            let items = model.newArrivals
-                            return items.isEmpty ? [] : [MenuSection(title: "New Arrivals", items: items)]
-                        })
                     case .search:
                         SearchPage()
                     }
@@ -44,6 +38,12 @@ struct RootView: View {
         }
         .tint(Theme.accent)
         .preferredColorScheme(.light)
+        .sheet(item: Binding(
+            get: { model.isSettingsOpen ? nil : model.syncReport },
+            set: { model.syncReport = $0 }
+        )) { report in
+            SyncReportView(report: report)
+        }
         .task { await model.syncIfNeeded() }
         .onChange(of: scenePhase) {
             if scenePhase == .active { Task { await model.syncIfNeeded() } }

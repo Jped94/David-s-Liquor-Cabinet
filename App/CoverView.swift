@@ -12,8 +12,6 @@ struct CoverView: View {
 
     /// How many open bottles the cover lists.
     private let poursShown = 6
-    /// How many new arrivals the cover lists.
-    private let arrivalsShown = 4
 
     var body: some View {
         ScrollView {
@@ -23,16 +21,12 @@ struct CoverView: View {
                 if sizeClass == .compact {
                     VStack(spacing: 40) {
                         poursColumn
-                        arrivalsBlock
                         listColumn
                     }
                 } else {
                     HStack(alignment: .top, spacing: 0) {
-                        VStack(spacing: 0) {
-                            poursColumn
-                            arrivalsBlock
-                        }
-                        .padding(.trailing, 36)
+                        poursColumn
+                            .padding(.trailing, 36)
                         Rectangle().fill(Theme.rule).frame(width: 1)
                         listColumn
                             .padding(.leading, 36)
@@ -175,29 +169,6 @@ struct CoverView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .top)
-    }
-
-    /// Recently bought bottles, under Tonight's Pours.
-    @ViewBuilder
-    private var arrivalsBlock: some View {
-        let arrivals = model.newArrivals
-        if !arrivals.isEmpty {
-            VStack(spacing: 16) {
-                columnHeading("New Arrivals", caption: "Last \(model.newArrivalDays) days")
-                VStack(alignment: .leading, spacing: 16) {
-                    ForEach(arrivals.prefix(arrivalsShown)) { item in
-                        MenuEntryView(item: item, showsCategory: true) { selected = item }
-                    }
-                }
-                if arrivals.count > arrivalsShown {
-                    NavigationLink(value: Route.newArrivals) {
-                        CapsLabel("All \(arrivals.count) new arrivals →", size: 14)
-                            .frame(minHeight: 44)
-                    }
-                }
-            }
-            .padding(.top, 24)
-        }
     }
 
     private var listColumn: some View {

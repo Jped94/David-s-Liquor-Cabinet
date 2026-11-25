@@ -55,18 +55,6 @@ public struct MenuItem: Sendable, Hashable, Identifiable {
     public var isOpened: Bool { openedCount > 0 }
     public var isLastBottle: Bool { bottleCount == 1 }
 
-    /// The most recent purchase date of any of its bottles.
-    public var latestPurchase: Date? { bottles.compactMap(\.purchaseDay).max() }
-
-    /// Bought within `days` days before `now`.
-    public func isNewArrival(within days: Int = MenuItem.newArrivalDays, now: Date = Date()) -> Bool {
-        guard let latestPurchase else { return false }
-        return now.timeIntervalSince(latestPurchase) <= Double(days) * 86_400
-    }
-
-    /// How long a purchase counts as a new arrival.
-    public static let newArrivalDays = 60
-
     /// Where the bottles are: one entry per location and bin, with counts,
     /// most bottles first.
     public func placements(mapping: HouseMapping) -> [ItemPlacement] {

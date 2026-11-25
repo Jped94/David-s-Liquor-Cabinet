@@ -15,11 +15,18 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 cellarTrackerSection
-                menuSection
                 adminSection
                 collectionSection
             }
             .navigationTitle("Settings")
+            .onAppear { model.isSettingsOpen = true }
+            .onDisappear { model.isSettingsOpen = false }
+            .sheet(item: Binding(
+                get: { model.syncReport },
+                set: { model.syncReport = $0 }
+            )) { report in
+                SyncReportView(report: report)
+            }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
@@ -83,21 +90,6 @@ struct SettingsView: View {
             Text("CellarTracker")
         } footer: {
             Text("The login is stored only on this iPad, in the Keychain. CellarTracker has no read-only logins, so this is the account's full password.")
-        }
-    }
-
-    private var menuSection: some View {
-        @Bindable var model = model
-        return Section {
-            Picker("New arrivals", selection: $model.newArrivalDays) {
-                ForEach(CollectionModel.newArrivalChoices, id: \.self) { days in
-                    Text("Last \(days) days").tag(days)
-                }
-            }
-        } header: {
-            Text("Menu")
-        } footer: {
-            Text("Bottles count as new arrivals for this long after their CellarTracker purchase date.")
         }
     }
 

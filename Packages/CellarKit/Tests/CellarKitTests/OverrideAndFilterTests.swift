@@ -108,29 +108,3 @@ import Testing
         #expect(MenuSections.groupedLabel(for: .bourbon) == nil)
     }
 }
-
-@Suite struct NewArrivalTests {
-    @Test func parsesCellarTrackerPurchaseDates() {
-        func day(_ text: String?) -> Date? {
-            BottleRecord(inventoryID: "1", wineID: "1", name: "X", purchaseDate: text).purchaseDay
-        }
-        let expected = Date(timeIntervalSince1970: 1_790_467_200) // 2026-09-27 00:00 UTC
-        #expect(day("9/27/2026") == expected)
-        #expect(day("9/27/2026 12:00:00 AM") == expected)
-        #expect(day("27/9/2026") == nil) // not month/day
-        #expect(day("") == nil)
-        #expect(day(nil) == nil)
-    }
-
-    @Test func newArrivalsUseTheLatestPurchase() {
-        let now = Date(timeIntervalSince1970: 1_790_467_200 + 10 * 86_400) // 10 days after 9/27/2026
-        let old = BottleRecord(inventoryID: "1", wineID: "1", name: "X", purchaseDate: "1/5/2025")
-        let recent = BottleRecord(inventoryID: "2", wineID: "1", name: "X", purchaseDate: "9/27/2026")
-        let item = MenuItem(id: "1", bottles: [old, recent], rules: RuleEnricher.enrich(old))
-        #expect(item.isNewArrival(now: now))
-        #expect(!item.isNewArrival(within: 5, now: now))
-
-        let oldOnly = MenuItem(id: "2", bottles: [old], rules: RuleEnricher.enrich(old))
-        #expect(!oldOnly.isNewArrival(now: now))
-    }
-}

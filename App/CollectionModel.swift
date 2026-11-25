@@ -27,12 +27,11 @@ final class CollectionModel {
     /// Settings; resets when the app is relaunched.
     var isAdmin = false { didSet { rebuild() } }
 
-    /// How many days after purchase a bottle counts as a new arrival.
-    var newArrivalDays: Int = MenuItem.newArrivalDays {
-        didSet { UserDefaults.standard.set(newArrivalDays, forKey: Self.newArrivalDaysKey) }
-    }
-    static let newArrivalChoices = [30, 60, 90, 180]
-    private static let newArrivalDaysKey = "newArrivalDays"
+    /// What the last sync changed, waiting to be shown. Cleared when dismissed.
+    var syncReport: SyncReport?
+    /// Set while the Settings sheet is open, so the report shows there
+    /// instead of underneath it.
+    var isSettingsOpen = false
 
     /// The owner's edits, keyed by iWine.
     private(set) var overrides: [String: ItemOverride] = [:]
@@ -48,8 +47,6 @@ final class CollectionModel {
         overrideStore = try? OverrideStore.defaultStore()
         overrides = (try? overrideStore?.load()) ?? [:]
         hiddenLocations = Set(UserDefaults.standard.stringArray(forKey: Self.hiddenLocationsKey) ?? [])
-        let savedDays = UserDefaults.standard.integer(forKey: Self.newArrivalDaysKey)
-        if Self.newArrivalChoices.contains(savedDays) { newArrivalDays = savedDays }
         hasCredentials = CredentialStore.load() != nil
         if hasCredentials, let snapshot = sync?.cachedSnapshot() {
             apply(snapshot)
@@ -78,17 +75,6 @@ final class CollectionModel {
             return a.menuTitle.localizedStandardCompare(b.menuTitle) == .orderedAscending
         }
         return Array(sorted.prefix(count))
-    }
-
-    func isNewArrival(_ item: MenuItem) -> Bool {
-        item.isNewArrival(within: newArrivalDays)
-    }
-
-    /// Bottles bought within the new-arrival window, newest first.
-    var newArrivals: [MenuItem] {
-        items
-            .filter { isNewArrival($0) }
-            .sorted { ($0.latestPurchase ?? .distantPast) > ($1.latestPurchase ?? .distantPast) }
     }
 
     /// Every open bottle, grouped by spirit, for the "Tonight's Pours" page.
@@ -158,12 +144,12 @@ final class CollectionModel {
 
     /// Downloads only if the cache is missing or more than a day old.
     func syncIfNeeded() async {
-        await runSync(force: false)
+        await runSync(force: false, userInitiated: false)
     }
 
     /// Always downloads.
     func syncNow() async {
-        await runSync(force: true)
+        await runSync(force: true, userInitiated: true)
     }
 
     /// Checks the login by downloading the collection, and saves it to the
@@ -173,10 +159,12 @@ final class CollectionModel {
         isSyncing = true
         defer { isSyncing = false }
         do {
+            let previous = previousDownload
             let snapshot = try await sync.sync(credentials: credentials, force: true)
             try CredentialStore.save(credentials)
             hasCredentials = true
             syncError = nil
+            syncReport = SyncReport.compare(old: previous, new: snapshot.bottles, overrides: overrides)
             apply(snapshot)
             return true
         } catch {
@@ -195,13 +183,28 @@ final class CollectionModel {
         loadSample()
     }
 
-    private func runSync(force: Bool) async {
+    /// The bottles from the last CellarTracker download (not sample data).
+    private var previousDownload: [BottleRecord]? {
+        source == .cellarTracker ? bottles : nil
+    }
+
+    private func runSync(force: Bool, userInitiated: Bool) async {
         guard let sync, !isSyncing, let credentials = CredentialStore.load() else { return }
         isSyncing = true
         defer { isSyncing = false }
         do {
-            apply(try await sync.sync(credentials: credentials, force: force))
+            let previous = previousDownload
+            let previousDate = lastSynced
+            let snapshot = try await sync.sync(credentials: credentials, force: force)
             syncError = nil
+            // A fresh cache is returned without downloading: nothing to report.
+            if snapshot.fetchedAt != previousDate {
+                let report = SyncReport.compare(old: previous, new: snapshot.bottles, overrides: overrides)
+                if report.hasChanges || report.isInitial || userInitiated {
+                    syncReport = report
+                }
+            }
+            apply(snapshot)
         } catch {
             syncError = Self.message(for: error)
         }
