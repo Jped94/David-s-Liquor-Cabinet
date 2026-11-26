@@ -21,7 +21,21 @@ final class CollectionModel {
     private(set) var hasCredentials = false
 
     var mapping = HouseMapping.default { didSet { rebuild() } }
-    var house: HouseFilter = .house(.bedford) { didSet { rebuild() } }
+    /// Which house this iPad shows. Remembered across launches.
+    var house: HouseFilter = .house(.bedford) {
+        didSet {
+            UserDefaults.standard.set(Self.storageValue(for: house), forKey: Self.houseKey)
+            rebuild()
+        }
+    }
+    private static let houseKey = "house"
+    /// Saved as the house name, or "*" for both houses.
+    private static func storageValue(for filter: HouseFilter) -> String {
+        switch filter {
+        case .all: "*"
+        case .house(let house): house.name
+        }
+    }
 
     /// Admin mode: shows hidden items and the Edit button. Turned on in
     /// Settings; resets when the app is relaunched.
@@ -47,6 +61,9 @@ final class CollectionModel {
         overrideStore = try? OverrideStore.defaultStore()
         overrides = (try? overrideStore?.load()) ?? [:]
         hiddenLocations = Set(UserDefaults.standard.stringArray(forKey: Self.hiddenLocationsKey) ?? [])
+        if let saved = UserDefaults.standard.string(forKey: Self.houseKey) {
+            house = saved == "*" ? .all : .house(House(saved))
+        }
         hasCredentials = CredentialStore.load() != nil
         if hasCredentials, let snapshot = sync?.cachedSnapshot() {
             apply(snapshot)
