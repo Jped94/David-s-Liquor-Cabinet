@@ -76,6 +76,8 @@ struct SyncReportView: View {
                             Text(detail(change))
                                 .font(Theme.body(17))
                                 .foregroundStyle(Theme.muted)
+                                .lineLimit(1)
+                                .fixedSize()
                         }
                         Text([change.subtitle, change.category.displayName].compactMap { $0 }.joined(separator: " · "))
                             .font(Theme.italic(16))

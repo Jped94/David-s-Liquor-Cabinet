@@ -130,3 +130,24 @@ enum Format {
 
     static func age(_ years: Double) -> String { number(years) + (years == 1 ? " year" : " years") }
 }
+
+// MARK: - Layout
+
+/// Pages switch to two columns only when there's room for them, e.g. an
+/// iPad in landscape. Portrait iPads get a single, roomier column.
+enum Layout {
+    static let twoColumnMinWidth: CGFloat = 960
+}
+
+extension View {
+    /// Keeps `width` updated with this view's width.
+    func readWidth(_ width: Binding<CGFloat>) -> some View {
+        background(
+            GeometryReader { geometry in
+                Color.clear
+                    .onAppear { width.wrappedValue = geometry.size.width }
+                    .onChange(of: geometry.size.width) { width.wrappedValue = geometry.size.width }
+            }
+        )
+    }
+}

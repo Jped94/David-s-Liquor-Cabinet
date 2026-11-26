@@ -4,7 +4,8 @@ import SwiftUI
 /// Search across the current house's menu.
 struct SearchPage: View {
     @Environment(CollectionModel.self) private var model
-    @Environment(\.horizontalSizeClass) private var sizeClass
+    @State private var width: CGFloat = Layout.twoColumnMinWidth
+    private var isWide: Bool { width >= Layout.twoColumnMinWidth }
     @State private var query = ""
     @State private var selected: MenuItem?
     @FocusState private var fieldFocused: Bool
@@ -39,16 +40,17 @@ struct SearchPage: View {
                 } else {
                     VStack(alignment: .leading, spacing: 14) {
                         CapsLabel(results.count == 1 ? "1 result" : "\(results.count) results", color: Theme.muted)
-                        MenuColumns(items: results, twoColumns: sizeClass != .compact) { selected = $0 }
+                        MenuColumns(items: results, twoColumns: isWide) { selected = $0 }
                     }
                 }
             }
-            .padding(.horizontal, sizeClass == .compact ? 24 : 64)
+            .padding(.horizontal, !isWide ? 24 : 64)
             .padding(.vertical, 24)
             .frame(maxWidth: 1200)
             .frame(maxWidth: .infinity)
         }
         .background(Theme.paper.ignoresSafeArea())
+        .readWidth($width)
         .navigationTitle("Search")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Theme.paper, for: .navigationBar)

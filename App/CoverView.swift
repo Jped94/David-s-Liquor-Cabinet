@@ -5,7 +5,8 @@ import SwiftUI
 /// of spirits.
 struct CoverView: View {
     @Environment(CollectionModel.self) private var model
-    @Environment(\.horizontalSizeClass) private var sizeClass
+    @State private var width: CGFloat = Layout.twoColumnMinWidth
+    private var isWide: Bool { width >= Layout.twoColumnMinWidth }
     @State private var selected: MenuItem?
     @State private var showingSettings = false
     @State private var choosingLocationsFor: House?
@@ -18,7 +19,7 @@ struct CoverView: View {
             VStack(spacing: 28) {
                 topBar
                 masthead
-                if sizeClass == .compact {
+                if !isWide {
                     VStack(spacing: 40) {
                         poursColumn
                         listColumn
@@ -35,12 +36,13 @@ struct CoverView: View {
                 CoverSyncStatus()
                     .padding(.top, 8)
             }
-            .padding(.horizontal, sizeClass == .compact ? 24 : 72)
+            .padding(.horizontal, !isWide ? 24 : 72)
             .padding(.vertical, 28)
             .frame(maxWidth: 1200)
             .frame(maxWidth: .infinity)
         }
         .background(Theme.paper.ignoresSafeArea())
+        .readWidth($width)
         .refreshable { await model.syncNow() }
         .navigationTitle("Contents")
         .toolbar(.hidden, for: .navigationBar)
@@ -133,7 +135,7 @@ struct CoverView: View {
         VStack(spacing: 10) {
             DoubleRule()
             Text("David's Cabinet")
-                .font(Theme.display(sizeClass == .compact ? 44 : 68))
+                .font(Theme.display(!isWide ? 44 : 68))
                 .foregroundStyle(Theme.ink)
                 .multilineTextAlignment(.center)
                 .padding(.top, 8)
@@ -185,6 +187,8 @@ struct CoverView: View {
                             Text("\(entry.count)")
                                 .font(Theme.body(17))
                                 .foregroundStyle(Theme.muted)
+                                .lineLimit(1)
+                                .fixedSize()
                         }
                         .frame(minHeight: 44)
                         .contentShape(Rectangle())

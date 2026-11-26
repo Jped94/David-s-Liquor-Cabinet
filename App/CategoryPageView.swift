@@ -13,7 +13,8 @@ struct CategoryPageView: View {
     let sections: @MainActor (CollectionModel, MenuOrdering) -> [MenuSection]
 
     @Environment(CollectionModel.self) private var model
-    @Environment(\.horizontalSizeClass) private var sizeClass
+    @State private var width: CGFloat = Layout.twoColumnMinWidth
+    private var isWide: Bool { width >= Layout.twoColumnMinWidth }
     @State private var openOnly = false
     @State private var selected: MenuItem?
     @State private var activeSection: String?
@@ -43,20 +44,21 @@ struct CategoryPageView: View {
                             if visible.count > 1 || section.title != title {
                                 SectionHeading(title: section.title)
                             }
-                            MenuColumns(items: section.items, twoColumns: sizeClass != .compact) { item in
+                            MenuColumns(items: section.items, twoColumns: isWide) { item in
                                 selected = item
                             }
                         }
                         .id(section.title)
                     }
                 }
-                .padding(.horizontal, sizeClass == .compact ? 24 : 64)
+                .padding(.horizontal, !isWide ? 24 : 64)
                 .padding(.vertical, 24)
                 .frame(maxWidth: 1200)
                 .frame(maxWidth: .infinity)
             }
         }
         .background(Theme.paper.ignoresSafeArea())
+        .readWidth($width)
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Theme.paper, for: .navigationBar)
@@ -76,7 +78,7 @@ struct CategoryPageView: View {
     private func header(total: Int) -> some View {
         VStack(spacing: 6) {
             Text(title)
-                .font(Theme.display(sizeClass == .compact ? 38 : 50))
+                .font(Theme.display(!isWide ? 38 : 50))
                 .foregroundStyle(Theme.ink)
                 .multilineTextAlignment(.center)
                 .accessibilityAddTraits(.isHeader)

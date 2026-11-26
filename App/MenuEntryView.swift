@@ -27,6 +27,8 @@ struct MenuEntryView: View {
                         Text(Format.abv(abv))
                             .font(Theme.body(16))
                             .foregroundStyle(Theme.ink)
+                            .lineLimit(1)
+                            .fixedSize()
                     }
                 }
                 if let subtitle {

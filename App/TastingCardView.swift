@@ -136,6 +136,8 @@ struct TastingCardView: View {
                         Text(placement.count == 1 ? "1 bottle" : "\(placement.count) bottles")
                             .font(Theme.body(17))
                             .foregroundStyle(Theme.muted)
+                            .lineLimit(1)
+                            .fixedSize()
                     }
                     .accessibilityElement(children: .combine)
                 }
