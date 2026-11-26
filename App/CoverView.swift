@@ -89,7 +89,13 @@ struct CoverView: View {
                     }
                 }
                 .frame(minHeight: 44)
+                // A new identity per house makes the label swap in at its
+                // new size instead of showing the new text in the old frame
+                // and then stretching.
+                .id(houseName + (locationSummary ?? ""))
             }
+            .fixedSize()
+            .transaction { $0.animation = nil }
             .accessibilityLabel("House: \(houseName)")
 
             Spacer()
