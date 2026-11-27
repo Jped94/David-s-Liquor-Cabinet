@@ -12,6 +12,7 @@ import type { Env } from "./env.js";
 import { error, HttpError, isRecord, json, readJSON } from "./http.js";
 import { bumpVersion, menuJSON, menuVersion } from "./menu.js";
 import { isEmptyOverride, validateOverride } from "./overrides.js";
+import { handleCommit, handleDownload } from "./sync.js";
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -41,6 +42,14 @@ async function route(request: Request, env: Env): Promise<Response> {
     return json({ guestPasscodeRequired: Boolean(env.GUEST_PASSCODE) });
   }
   if (path === "/api/syncs" && method === "GET") return getSyncs(request, env);
+  if (path === "/api/sync/download" && method === "POST") {
+    await requireRole(request, env, "admin");
+    return handleDownload(request);
+  }
+  if (path === "/api/sync/commit" && method === "POST") {
+    await requireRole(request, env, "admin");
+    return handleCommit(request, env);
+  }
 
   const item = path.match(/^\/api\/items\/([0-9A-Za-z_-]{1,40})\/override$/);
   if (item && (method === "PUT" || method === "DELETE")) return putOverride(request, env, item[1], method);
