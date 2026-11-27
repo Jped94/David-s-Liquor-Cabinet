@@ -26,9 +26,15 @@ public protocol HTTPTransport: Sendable {
     func get(_ url: URL, timeout: TimeInterval) async throws -> HTTPResponse
 }
 
+/// Sends any HTTP request (used for the shared server). Abstracted so tests
+/// can substitute a fake.
+public protocol HTTPSender: Sendable {
+    func send(_ request: URLRequest) async throws -> HTTPResponse
+}
+
 /// `URLSession`-backed transport that never follows redirects, so a
 /// credential-bearing URL is only ever sent to the host we chose.
-public final class URLSessionTransport: NSObject, HTTPTransport, URLSessionTaskDelegate, @unchecked Sendable {
+public final class URLSessionTransport: NSObject, HTTPTransport, HTTPSender, URLSessionTaskDelegate, @unchecked Sendable {
     // `URLSession` is thread-safe; the delegate keeps no mutable state.
     private var session: URLSession!
 
@@ -43,6 +49,10 @@ public final class URLSessionTransport: NSObject, HTTPTransport, URLSessionTaskD
     public func get(_ url: URL, timeout: TimeInterval) async throws -> HTTPResponse {
         var request = URLRequest(url: url)
         request.timeoutInterval = timeout
+        return try await send(request)
+    }
+
+    public func send(_ request: URLRequest) async throws -> HTTPResponse {
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
         var headers: [String: String] = [:]

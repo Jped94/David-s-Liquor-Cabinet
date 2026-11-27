@@ -4,13 +4,18 @@ import Observation
 
 /// App-wide collection state.
 ///
-/// On launch it shows the cached CellarTracker snapshot if there is one,
-/// otherwise the bundled sample data. With a saved login it syncs when the
-/// cache is more than a day old, and on demand.
+/// The menu comes from the shared cabinet server, so every iPad and the web
+/// page show the same collection and edits. The last menu is cached on the
+/// iPad, so the app opens instantly and works offline. Before the first
+/// download it shows the bundled sample data.
+///
+/// Admin mode is unlocked with the admin passcode and lasts until the app
+/// is closed or locked again. It allows syncing from CellarTracker, editing
+/// bottles and seeing hidden ones.
 @Observable
 @MainActor
 final class CollectionModel {
-    enum Source { case sample, cellarTracker }
+    enum Source { case sample, server }
 
     private(set) var bottles: [BottleRecord] = [] {
         // Parse names once per download, so house and location changes are instant.
@@ -19,9 +24,13 @@ final class CollectionModel {
     @ObservationIgnored private var catalog: [String: ItemBasics] = [:]
     private(set) var items: [MenuItem] = []
     private(set) var source: Source = .sample
+    /// When the collection was last synced from CellarTracker (by any device).
     private(set) var lastSynced: Date?
+    private(set) var isRefreshing = false
     private(set) var isSyncing = false
+    /// The last refresh or sync problem, shown on the cover and in Settings.
     private(set) var syncError: String?
+    /// Whether a CellarTracker login is saved on this iPad.
     private(set) var hasCredentials = false
 
     var mapping = HouseMapping.default { didSet { rebuild() } }
@@ -41,9 +50,9 @@ final class CollectionModel {
         }
     }
 
-    /// Admin mode: shows hidden items and the Edit button. Turned on in
-    /// Settings; resets when the app is relaunched.
-    var isAdmin = false { didSet { rebuild() } }
+    /// The admin session, kept in memory only: closing the app locks it.
+    private var adminToken: String? { didSet { rebuild() } }
+    var isAdmin: Bool { adminToken != nil }
 
     /// What the last sync changed, waiting to be shown. Cleared when dismissed.
     var syncReport: SyncReport?
@@ -51,26 +60,34 @@ final class CollectionModel {
     /// instead of underneath it.
     var isSettingsOpen = false
 
-    /// The owner's edits, keyed by iWine.
+    /// The owner's edits, keyed by iWine (from the server).
     private(set) var overrides: [String: ItemOverride] = [:]
     /// Locations left off the menu (normalized names), remembered on this iPad.
     private(set) var hiddenLocations: Set<String> = []
+    /// Edits made on this iPad before the shared server existed, waiting to
+    /// be uploaded.
+    private(set) var localEdits: [String: ItemOverride] = [:]
 
-    private let sync: CollectionSync?
-    private let overrideStore: OverrideStore?
+    private let client: ServerClient?
+    private var cache: MenuCache?
+    private let cacheURL = try? MenuCache.defaultURL()
+    private let legacyEditStore = try? OverrideStore.defaultStore()
     private static let hiddenLocationsKey = "hiddenLocations"
 
     init() {
-        sync = (try? SnapshotStore.defaultStore()).map { CollectionSync(store: $0) }
-        overrideStore = try? OverrideStore.defaultStore()
-        overrides = (try? overrideStore?.load()) ?? [:]
+        client = AppConfig.serverURL.map { ServerClient(baseURL: $0) }
         hiddenLocations = Set(UserDefaults.standard.stringArray(forKey: Self.hiddenLocationsKey) ?? [])
         if let saved = UserDefaults.standard.string(forKey: Self.houseKey) {
             house = saved == "*" ? .all : .house(House(saved))
         }
         hasCredentials = CredentialStore.load() != nil
-        if hasCredentials, let snapshot = sync?.cachedSnapshot() {
-            apply(snapshot)
+        localEdits = (try? legacyEditStore?.load()) ?? [:]
+        // The one-off cleanup of the pre-server cache.
+        try? SnapshotStore.defaultStore().delete()
+
+        if let url = cacheURL, let cached = MenuCache.load(from: url), !cached.menu.products.isEmpty {
+            cache = cached
+            apply(cached.menu)
         } else {
             loadSample()
         }
@@ -79,6 +96,7 @@ final class CollectionModel {
     // MARK: Derived data
 
     var isSampleData: Bool { source == .sample }
+    var isServerConfigured: Bool { client != nil && AppConfig.appKey != nil }
     var openedItems: [MenuItem] { items.filter(\.isOpened) }
     var totalBottles: Int { bottles.reduce(0) { $0 + $1.quantity } }
     var unmappedLocations: [String] { mapping.unmappedLocations(in: bottles.filter { !$0.isPending }) }
@@ -151,6 +169,71 @@ final class CollectionModel {
         rebuild()
     }
 
+    // MARK: Reading the menu
+
+    /// Fetches the menu if it changed. Cheap when it hasn't (the server
+    /// answers "not modified"), so it runs on launch and whenever the app
+    /// comes to the front.
+    func refresh() async {
+        guard let client, !isRefreshing else { return }
+        isRefreshing = true
+        defer { isRefreshing = false }
+        do {
+            let result: ServerClient.MenuResult
+            do {
+                result = try await client.menu(token: try await readToken(), etag: cache?.etag)
+            } catch ServerError.unauthorized(_) where adminToken == nil {
+                // The saved guest session expired or the key changed: start again.
+                GuestSessionStore.delete()
+                result = try await client.menu(token: try await readToken(), etag: cache?.etag)
+            }
+            if case .menu(let menu, let etag) = result {
+                let updated = MenuCache(menu: menu, etag: etag)
+                cache = updated
+                if let cacheURL { try? updated.save(to: cacheURL) }
+                apply(menu)
+            }
+            if !isSyncing { syncError = nil }
+        } catch ServerError.unauthorized(let message) where adminToken != nil {
+            adminToken = nil
+            syncError = message
+        } catch {
+            syncError = Self.message(for: error)
+        }
+    }
+
+    /// The admin session if unlocked, otherwise the guest session (created
+    /// with the app's built-in key the first time).
+    private func readToken() async throws -> String? {
+        if let adminToken { return adminToken }
+        if let saved = GuestSessionStore.load() { return saved }
+        guard let client, let key = AppConfig.appKey else { return nil }
+        let session = try await client.createSession(passcode: key)
+        GuestSessionStore.save(session.token)
+        return session.token
+    }
+
+    // MARK: Admin
+
+    /// Unlocks admin mode with the admin passcode. Returns an error message,
+    /// or `nil` on success.
+    func unlockAdmin(passcode: String) async -> String? {
+        guard let client else { return "This build isn't connected to the cabinet server." }
+        do {
+            let session = try await client.createSession(passcode: passcode)
+            guard session.role == .admin else { return "That's not the admin passcode." }
+            adminToken = session.token
+            await refresh()
+            return nil
+        } catch {
+            return Self.message(for: error)
+        }
+    }
+
+    func lockAdmin() {
+        adminToken = nil
+    }
+
     // MARK: Edits
 
     /// The current version of an item (e.g. after an edit or a sync).
@@ -158,86 +241,82 @@ final class CollectionModel {
         items.first { $0.id == id }
     }
 
-    /// Saves the owner's edit for an item. `nil` or an empty edit removes it.
-    func saveOverride(_ override: ItemOverride?, for id: MenuItem.ID) throws {
-        var updated = overrides
-        if let override, !override.isEmpty {
-            updated[id] = override
-        } else {
-            updated[id] = nil
-        }
-        try overrideStore?.save(updated)
-        overrides = updated
+    /// Saves the owner's edit to the server. `nil` or an empty edit removes it.
+    func saveOverride(_ override: ItemOverride?, for id: MenuItem.ID) async throws {
+        guard let client, let adminToken else { throw ServerError.forbidden("Unlock admin mode to edit.") }
+        let edit = override.flatMap { $0.isEmpty ? nil : $0 }
+        try await client.saveOverride(token: adminToken, id: id, override: edit)
+        overrides[id] = edit
         rebuild()
+        await refresh()
     }
 
-    // MARK: Sync
-
-    /// Downloads only if the cache is missing or more than a day old.
-    func syncIfNeeded() async {
-        await runSync(force: false, userInitiated: false)
+    /// Uploads edits saved on this iPad before the shared server, then
+    /// removes the local copy. Returns how many were uploaded.
+    func uploadLocalEdits() async throws -> Int {
+        guard let client, let adminToken else { throw ServerError.forbidden("Unlock admin mode first.") }
+        let count = localEdits.count
+        var remaining = localEdits
+        for (id, edit) in localEdits.sorted(by: { $0.key < $1.key }) {
+            try await client.saveOverride(token: adminToken, id: id, override: edit)
+            remaining[id] = nil
+            localEdits = remaining
+            try? legacyEditStore?.save(remaining)
+        }
+        await refresh()
+        return count
     }
 
-    /// Always downloads.
+    // MARK: Sync from CellarTracker
+
+    /// Syncs with the saved CellarTracker login.
     func syncNow() async {
-        await runSync(force: true, userInitiated: true)
+        guard let credentials = CredentialStore.load() else {
+            syncError = "Add the CellarTracker login first."
+            return
+        }
+        _ = await sync(credentials)
     }
 
-    /// Checks the login by downloading the collection, and saves it to the
-    /// Keychain only if that works. Returns whether it worked.
+    /// Checks a CellarTracker login by syncing with it, and saves it on this
+    /// iPad only if that works. Returns whether it worked.
     func signIn(_ credentials: CellarTrackerCredentials) async -> Bool {
-        guard let sync, !isSyncing else { return false }
+        guard await sync(credentials) else { return false }
+        try? CredentialStore.save(credentials)
+        hasCredentials = true
+        return true
+    }
+
+    /// Forgets the CellarTracker login on this iPad. The menu stays.
+    func signOut() {
+        CredentialStore.delete()
+        hasCredentials = false
+    }
+
+    /// The server downloads the export (browsers and the free plan's limits
+    /// mean it only passes the file through), this iPad works out the menu,
+    /// and uploads it for every device.
+    private func sync(_ credentials: CellarTrackerCredentials) async -> Bool {
+        guard let client, let adminToken else {
+            syncError = "Unlock admin mode to sync."
+            return false
+        }
+        guard !isSyncing else { return false }
         isSyncing = true
         defer { isSyncing = false }
         do {
-            let previous = previousDownload
-            let snapshot = try await sync.sync(credentials: credentials, force: true)
-            try CredentialStore.save(credentials)
-            hasCredentials = true
+            let download = try await client.downloadExport(token: adminToken, credentials: credentials)
+            let downloaded = try ExportDecoder.decodeBottles(download.body, contentType: download.contentType)
+            let hadMenu = source == .server && !bottles.isEmpty
+            let upload = SyncUpload(downloaded: downloaded, previous: hadMenu ? bottles : nil, overrides: overrides)
+            try await client.commit(token: adminToken, upload: upload)
             syncError = nil
-            syncReport = SyncReport.compare(old: previous, new: snapshot.bottles, overrides: overrides)
-            apply(snapshot)
+            syncReport = upload.syncReport
+            await refresh()
             return true
         } catch {
             syncError = Self.message(for: error)
             return false
-        }
-    }
-
-    /// Forgets the login and the cached collection, and goes back to sample data.
-    func signOut() {
-        CredentialStore.delete()
-        try? sync?.store.delete()
-        hasCredentials = false
-        syncError = nil
-        lastSynced = nil
-        loadSample()
-    }
-
-    /// The bottles from the last CellarTracker download (not sample data).
-    private var previousDownload: [BottleRecord]? {
-        source == .cellarTracker ? bottles : nil
-    }
-
-    private func runSync(force: Bool, userInitiated: Bool) async {
-        guard let sync, !isSyncing, let credentials = CredentialStore.load() else { return }
-        isSyncing = true
-        defer { isSyncing = false }
-        do {
-            let previous = previousDownload
-            let previousDate = lastSynced
-            let snapshot = try await sync.sync(credentials: credentials, force: force)
-            syncError = nil
-            // A fresh cache is returned without downloading: nothing to report.
-            if snapshot.fetchedAt != previousDate {
-                let report = SyncReport.compare(old: previous, new: snapshot.bottles, overrides: overrides)
-                if report.hasChanges || report.isInitial || userInitiated {
-                    syncReport = report
-                }
-            }
-            apply(snapshot)
-        } catch {
-            syncError = Self.message(for: error)
         }
     }
 
@@ -247,10 +326,16 @@ final class CollectionModel {
 
     // MARK: Loading
 
-    private func apply(_ snapshot: CollectionSnapshot) {
-        bottles = snapshot.bottles
-        lastSynced = snapshot.fetchedAt
-        source = .cellarTracker
+    private func apply(_ menu: ServerMenu) {
+        guard !menu.products.isEmpty || source == .server else {
+            // The server has no collection yet: keep showing the sample.
+            overrides = menu.overrides
+            return
+        }
+        bottles = menu.bottleRecords()
+        overrides = menu.overrides
+        lastSynced = menu.syncedDate
+        source = .server
         rebuild()
     }
 
@@ -275,7 +360,7 @@ final class CollectionModel {
             filter: house,
             mapping: mapping,
             hiddenLocations: hiddenLocations,
-            overrides: overrides,
+            overrides: source == .server ? overrides : [:],
             includeHidden: isAdmin,
             catalog: catalog
         )

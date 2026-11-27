@@ -50,9 +50,9 @@ struct RootView: View {
         )) { report in
             SyncReportView(report: report)
         }
-        .task { await model.syncIfNeeded() }
+        .task { await model.refresh() }
         .onChange(of: scenePhase) {
-            if scenePhase == .active { Task { await model.syncIfNeeded() } }
+            if scenePhase == .active { Task { await model.refresh() } }
         }
     }
 }

@@ -1,21 +1,28 @@
 import CellarKit
 import SwiftUI
 
-/// CellarTracker login, sync status, and collection info.
-///
-/// Not yet protected: the admin PIN / Face ID gate comes in phase 4.
+/// Server status, admin unlock, CellarTracker sync and collection info.
 struct SettingsView: View {
     @Environment(CollectionModel.self) private var model
     @Environment(\.dismiss) private var dismiss
+    @State private var passcode = ""
+    @State private var unlockError: String?
+    @State private var isUnlocking = false
     @State private var username = ""
     @State private var password = ""
     @State private var confirmingSignOut = false
+    @State private var uploadMessage: String?
+    @State private var isUploading = false
 
     var body: some View {
         NavigationStack {
             Form {
-                cellarTrackerSection
+                menuSection
                 adminSection
+                if model.isAdmin {
+                    cellarTrackerSection
+                    if !model.localEdits.isEmpty { localEditsSection }
+                }
                 collectionSection
             }
             .navigationTitle("Settings")
@@ -35,18 +42,74 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: Sections
+
+    private var menuSection: some View {
+        Section {
+            LabeledContent("Server", value: model.isServerConfigured ? "Connected" : "Not set up in this build")
+            LabeledContent("Collection synced") {
+                Text(model.lastSynced.map { $0.formatted(.relative(presentation: .named)) } ?? "Not yet")
+            }
+            Button {
+                Task { await model.refresh() }
+            } label: {
+                HStack {
+                    Text("Check for updates")
+                    if model.isRefreshing {
+                        Spacer()
+                        ProgressView()
+                    }
+                }
+            }
+            .disabled(!model.isServerConfigured || model.isRefreshing)
+            if let error = model.syncError {
+                Text(error).foregroundStyle(.red)
+            }
+        } header: {
+            Text("Menu")
+        } footer: {
+            Text("Every iPad shows the same collection and edits. The menu updates by itself when the app opens.")
+        }
+    }
+
+    private var adminSection: some View {
+        Section {
+            if model.isAdmin {
+                LabeledContent("Admin mode", value: "On")
+                Button("Lock admin mode") { model.lockAdmin() }
+            } else {
+                SecureField("Admin passcode", text: $passcode)
+                    .textContentType(.password)
+                    .onSubmit(unlock)
+                Button(action: unlock) {
+                    HStack {
+                        Text("Unlock admin mode")
+                        if isUnlocking {
+                            Spacer()
+                            ProgressView()
+                        }
+                    }
+                }
+                .disabled(passcode.isEmpty || isUnlocking)
+                if let unlockError {
+                    Text(unlockError).foregroundStyle(.red)
+                }
+            }
+        } header: {
+            Text("Admin")
+        } footer: {
+            Text("Admin mode lets you sync from CellarTracker, edit bottles and see hidden ones. It locks again when the app is closed.")
+        }
+    }
+
     private var cellarTrackerSection: some View {
         Section {
             if model.hasCredentials {
-                LabeledContent("Status", value: "Connected")
-                LabeledContent("Last synced") {
-                    Text(model.lastSynced.map { $0.formatted(.relative(presentation: .named)) } ?? "Never")
-                }
                 Button {
                     Task { await model.syncNow() }
                 } label: {
                     HStack {
-                        Text("Sync now")
+                        Text("Sync from CellarTracker")
                         if model.isSyncing {
                             Spacer()
                             ProgressView()
@@ -54,15 +117,15 @@ struct SettingsView: View {
                     }
                 }
                 .disabled(model.isSyncing)
-                Button("Sign out", role: .destructive) { confirmingSignOut = true }
+                Button("Forget CellarTracker login", role: .destructive) { confirmingSignOut = true }
                     .confirmationDialog(
-                        "Sign out of CellarTracker?",
+                        "Forget the CellarTracker login on this iPad?",
                         isPresented: $confirmingSignOut,
                         titleVisibility: .visible
                     ) {
-                        Button("Sign out", role: .destructive) { model.signOut() }
+                        Button("Forget login", role: .destructive) { model.signOut() }
                     } message: {
-                        Text("The menu will go back to sample data until you sign in again.")
+                        Text("The menu stays as it is. You'll need the login again to sync from this iPad.")
                     }
             } else {
                 TextField("Username", text: $username)
@@ -83,24 +146,34 @@ struct SettingsView: View {
                 }
                 .disabled(username.isEmpty || password.isEmpty || model.isSyncing)
             }
-            if let error = model.syncError {
-                Text(error).foregroundStyle(.red)
-            }
         } header: {
             Text("CellarTracker")
         } footer: {
-            Text("The login is stored only on this iPad, in the Keychain. CellarTracker has no read-only logins, so this is the account's full password.")
+            Text("The login is saved only on this iPad, in the Keychain. For each sync it's passed to the cabinet server, used once to download the collection, and not stored there.")
         }
     }
 
-    private var adminSection: some View {
-        @Bindable var model = model
-        return Section {
-            Toggle("Admin mode", isOn: $model.isAdmin)
+    private var localEditsSection: some View {
+        Section {
+            Button {
+                uploadEdits()
+            } label: {
+                HStack {
+                    Text(model.localEdits.count == 1 ? "Upload 1 edit" : "Upload \(model.localEdits.count) edits")
+                    if isUploading {
+                        Spacer()
+                        ProgressView()
+                    }
+                }
+            }
+            .disabled(isUploading)
+            if let uploadMessage {
+                Text(uploadMessage).foregroundStyle(.secondary)
+            }
         } header: {
-            Text("Admin")
+            Text("Edits saved on this iPad")
         } footer: {
-            Text("Shows an Edit button on each bottle's card, and hidden bottles on the menu. Turns off when the app is closed.")
+            Text("Edits made before the menu was shared are only on this iPad. Upload them once so every iPad gets them.")
         }
     }
 
@@ -115,11 +188,24 @@ struct SettingsView: View {
                         .foregroundStyle(.orange)
                     Text(model.unmappedLocations.joined(separator: ", "))
                         .font(.footnote)
-                    Text("Bottles here only show under \"All\". Assigning locations comes in a later update.")
+                    Text("Bottles here only show under \"Both houses\".")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
             }
+        }
+    }
+
+    // MARK: Actions
+
+    private func unlock() {
+        guard !passcode.isEmpty else { return }
+        isUnlocking = true
+        unlockError = nil
+        Task {
+            unlockError = await model.unlockAdmin(passcode: passcode)
+            isUnlocking = false
+            if unlockError == nil { passcode = "" }
         }
     }
 
@@ -132,6 +218,20 @@ struct SettingsView: View {
             if await model.signIn(credentials) {
                 password = ""
             }
+        }
+    }
+
+    private func uploadEdits() {
+        isUploading = true
+        uploadMessage = nil
+        Task {
+            do {
+                let count = try await model.uploadLocalEdits()
+                uploadMessage = count == 1 ? "Uploaded 1 edit." : "Uploaded \(count) edits."
+            } catch {
+                uploadMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            }
+            isUploading = false
         }
     }
 }

@@ -43,7 +43,7 @@ struct CoverView: View {
         }
         .background(Theme.paper.ignoresSafeArea())
         .readWidth($width)
-        .refreshable { await model.syncNow() }
+        .refreshable { await model.refresh() }
         .navigationTitle("Contents")
         .toolbar(.hidden, for: .navigationBar)
         .sheet(item: $selected) { item in
@@ -235,7 +235,9 @@ struct CoverSyncStatus: View {
                     Text("Updating from CellarTracker…")
                 }
             } else if model.isSampleData {
-                Text("Showing sample data. Connect CellarTracker in Settings.")
+                Text(model.isServerConfigured
+                    ? "Showing sample data until the collection is synced."
+                    : "Showing sample data. This build isn't connected to the cabinet server.")
             }
             if let error = model.syncError {
                 Text(error).foregroundStyle(Theme.accent)

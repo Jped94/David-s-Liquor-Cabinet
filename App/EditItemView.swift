@@ -23,6 +23,7 @@ struct EditItemView: View {
     @State private var isHidden: Bool
     @State private var errorMessage: String?
     @State private var confirmingReset = false
+    @State private var isSaving = false
 
     /// The item as CellarTracker and the rules alone would show it.
     private let base: MenuItem
@@ -113,7 +114,7 @@ struct EditItemView: View {
                     }
                     .disabled(item.override == nil)
                 } footer: {
-                    Text("Edits are saved on this iPad only. They never change CellarTracker, and they're kept when the collection syncs.")
+                    Text("Edits are shared with every iPad and the web page. They never change CellarTracker, and they're kept when the collection syncs.")
                 }
 
                 if let errorMessage {
@@ -127,7 +128,11 @@ struct EditItemView: View {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save", action: save)
+                    if isSaving {
+                        ProgressView()
+                    } else {
+                        Button("Save", action: save)
+                    }
                 }
             }
             .confirmationDialog("Remove all edits to this bottle?", isPresented: $confirmingReset, titleVisibility: .visible) {
@@ -158,11 +163,16 @@ struct EditItemView: View {
     }
 
     private func store(_ override: ItemOverride?) {
-        do {
-            try model.saveOverride(override, for: item.id)
-            dismiss()
-        } catch {
-            errorMessage = "Couldn't save: \(error.localizedDescription)"
+        isSaving = true
+        errorMessage = nil
+        Task {
+            defer { isSaving = false }
+            do {
+                try await model.saveOverride(override, for: item.id)
+                dismiss()
+            } catch {
+                errorMessage = "Couldn't save: \((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)"
+            }
         }
     }
 

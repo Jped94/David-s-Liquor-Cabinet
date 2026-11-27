@@ -13,6 +13,7 @@ export interface MenuProduct extends ProductBasics {
   designation?: string;
   vineyard?: string;
   varietal?: string;
+  masterVarietal?: string;
   vintage?: number;
   country?: string;
   region?: string;
@@ -111,6 +112,7 @@ function menuProduct(b: Bottle): MenuProduct {
     designation: b.designation,
     vineyard: b.vineyard,
     varietal: b.varietal,
+    masterVarietal: b.masterVarietal,
     vintage: b.vintage,
     country: b.country,
     region: b.region,
