@@ -2,7 +2,7 @@
   // Cloudflare Worker for David's Liquor Cabinet: the shared menu API.
   // Deploy setup is described in README.md (Shared server).
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "liquor-cabinet",
+  "name": "owls-perch-lc",
   "main": "src/index.ts",
   "account_id": "0904f98322ff2119789ad2e18d48d61d",
   "compatibility_date": "2026-11-01",

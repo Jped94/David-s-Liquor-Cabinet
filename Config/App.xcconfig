@@ -1,8 +1,7 @@
 // Build settings shared by every configuration.
 
 // The shared server's host name (no "https://": "//" starts a comment here).
-// Filled in once the Cloudflare workers.dev subdomain is chosen.
-CABINET_SERVER_HOST =
+CABINET_SERVER_HOST = owls-perch-lc.josh-090.workers.dev
 
 // The app's read key (the server's GUEST_PASSCODE) lives in
 // Config/Secrets.xcconfig, which is git-ignored. Copy
