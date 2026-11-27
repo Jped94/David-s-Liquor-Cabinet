@@ -53,6 +53,7 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: server/package-lock.json
-      - run: npm ci
+      # npm 10 (bundled with Node 22) fails to resolve vitest 4's peer deps.
+      - run: npx -y npm@11 ci
       - run: npm run typecheck
       - run: npm test

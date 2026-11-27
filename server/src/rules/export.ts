@@ -60,7 +60,7 @@ export function decodeText(bytes: Uint8Array, contentType?: string | null): stri
   const latin = ["windows-1252", "cp1252", "iso-8859-1", "latin1", "us-ascii"];
   if (declared && latin.includes(declared)) return new TextDecoder("windows-1252").decode(bytes);
   try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes);
   } catch {
     return new TextDecoder("windows-1252").decode(bytes);
   }
