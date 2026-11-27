@@ -44,6 +44,9 @@ struct TastingCardView: View {
                 }
 
                 VStack(spacing: 14) {
+                    if let scotchStyle = item.scotchStyle, item.style == nil {
+                        detailRow("Style", scotchStyle.displayName)
+                    }
                     if let style = item.style {
                         detailRow("Style", style)
                     }
@@ -150,8 +153,8 @@ struct TastingCardView: View {
         let candidates: [(String, String)?] = [
             item.ageYears.map { ("Age", Format.age($0)) },
             item.abv.map { ("Strength", Format.abv($0)) },
-            ("Bottles", "\(item.bottleCount)"),
-            ("Status", item.isOpened ? "Open" : "Sealed"),
+            ("Sealed", "\(item.sealedCount)"),
+            ("Open", "\(item.openedCount)"),
         ]
         let cells = candidates.compactMap { $0 }
 
@@ -161,7 +164,7 @@ struct TastingCardView: View {
                     CapsLabel(cell.0, color: Theme.muted, size: 12)
                     Text(cell.1)
                         .font(Theme.display(24, bold: false))
-                        .foregroundStyle(cell.0 == "Status" && item.isOpened ? Theme.accent : Theme.ink)
+                        .foregroundStyle(cell.0 == "Open" && item.isOpened ? Theme.accent : Theme.ink)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)

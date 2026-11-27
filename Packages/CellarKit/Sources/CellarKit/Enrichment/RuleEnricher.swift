@@ -7,6 +7,7 @@ import Foundation
 public struct RuleEnrichment: Sendable, Hashable, Codable {
     public var category: SpiritCategory
     public var scotchRegion: ScotchRegion?
+    public var scotchStyle: ScotchStyle?
     /// Alcohol by volume, as a percentage (e.g. 46.0).
     public var abv: Double?
     public var ageYears: Double?
@@ -19,6 +20,7 @@ public struct RuleEnrichment: Sendable, Hashable, Codable {
     public init(
         category: SpiritCategory,
         scotchRegion: ScotchRegion? = nil,
+        scotchStyle: ScotchStyle? = nil,
         abv: Double? = nil,
         ageYears: Double? = nil,
         style: String? = nil,
@@ -27,6 +29,7 @@ public struct RuleEnrichment: Sendable, Hashable, Codable {
     ) {
         self.category = category
         self.scotchRegion = scotchRegion
+        self.scotchStyle = scotchStyle
         self.abv = abv
         self.ageYears = ageYears
         self.style = style
@@ -46,6 +49,7 @@ public enum RuleEnricher {
         return RuleEnrichment(
             category: category,
             scotchRegion: category == .scotch ? scotchRegion(for: bottle) : nil,
+            scotchStyle: category == .scotch ? scotchStyle(for: bottle) : nil,
             abv: abv(for: bottle),
             ageYears: ageYears(for: bottle),
             style: style(fromVineyard: bottle.vineyard),
@@ -132,6 +136,33 @@ public enum RuleEnricher {
 
     /// ABV from the name (or the Vineyard field), e.g. "…, 54%" → 54.0.
     /// Also understands US proof, e.g. "125.9 Proof" → 62.95.
+    // MARK: - Scotch style
+
+    /// Blends sold under a brand name rather than a style on the label.
+    static let blendedBrands = [
+        "johnnie walker", "chivas regal", "dewar's", "famous grouse", "ballantine's", "cutty sark",
+        "j&b", "teacher's", "grant's", "whyte & mackay", "royal salute", "buchanan's", "haig",
+    ]
+    static let blendedMaltBrands = ["monkey shoulder", "big peat", "scallywag", "timorous beastie", "rock oyster", "sheep dip"]
+
+    /// Reads the style from the name and CT's Vineyard field ("Single Malt
+    /// Scotch Whisky", "Blended Malt Scotch Whisky", ...). Anything that
+    /// doesn't say otherwise is taken to be a single malt.
+    public static func scotchStyle(for bottle: BottleRecord) -> ScotchStyle {
+        let text = [bottle.name, bottle.producer, bottle.vineyard]
+            .compactMap { $0 }
+            .joined(separator: " ")
+            .lowercased()
+        if text.contains("single grain") { return .singleGrain }
+        if ["blended malt", "vatted malt", "pure malt"].contains(where: { text.contains($0) })
+            || blendedMaltBrands.contains(where: { text.contains($0) }) {
+            return .blendedMalt
+        }
+        if text.contains("single malt") { return .singleMalt }
+        if text.contains("blend") || blendedBrands.contains(where: { text.contains($0) }) { return .blended }
+        return .singleMalt
+    }
+
     public static func abv(for bottle: BottleRecord) -> Double? {
         for field in [bottle.name, bottle.vineyard] {
             guard let text = field else { continue }

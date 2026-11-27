@@ -37,6 +37,11 @@ public struct MenuItem: Sendable, Hashable, Identifiable {
         return override?.scotchRegion ?? rules.scotchRegion
     }
 
+    public var scotchStyle: ScotchStyle? {
+        guard category == .scotch else { return nil }
+        return override?.scotchStyle ?? rules.scotchStyle ?? .singleMalt
+    }
+
     public var abv: Double? { override?.abv ?? rules.abv }
     public var ageYears: Double? { override?.ageYears ?? rules.ageYears }
 
@@ -53,6 +58,8 @@ public struct MenuItem: Sendable, Hashable, Identifiable {
     public var bottleCount: Int { bottles.reduce(0) { $0 + $1.quantity } }
     public var openedCount: Int { bottles.filter(RuleEnricher.isOpened).reduce(0) { $0 + $1.quantity } }
     public var isOpened: Bool { openedCount > 0 }
+    /// Bottles not yet opened.
+    public var sealedCount: Int { bottleCount - openedCount }
     public var isLastBottle: Bool { bottleCount == 1 }
 
     /// Where the bottles are: one entry per location and bin, with counts,
@@ -119,7 +126,25 @@ public struct ItemPlacement: Sendable, Hashable {
     }
 
     /// "Bedford · Owl's Perch · Cabinet 1-Bottom"
+    ///
+    /// CellarTracker locations often repeat the house name ("Estancia",
+    /// "Estancia Open"), so that part is dropped: "Estancia" and
+    /// "Estancia · Open".
     public var description: String {
-        [house?.name, location, bin].compactMap { $0 }.joined(separator: " · ")
+        [house?.name, shortLocation, bin].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    /// The location without a leading house name, or `nil` if that's all it was.
+    public var shortLocation: String? {
+        guard let location = location?.trimmingCharacters(in: .whitespaces), !location.isEmpty else { return nil }
+        guard let house else { return location }
+        let lower = location.lowercased()
+        let name = house.name.lowercased()
+        if lower == name { return nil }
+        if lower.hasPrefix(name + " ") {
+            let rest = location.dropFirst(name.count).trimmingCharacters(in: .whitespaces)
+            return rest.prefix(1).uppercased() + rest.dropFirst()
+        }
+        return location
     }
 }

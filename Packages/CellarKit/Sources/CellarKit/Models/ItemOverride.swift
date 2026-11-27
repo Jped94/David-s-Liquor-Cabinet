@@ -11,6 +11,7 @@ public struct ItemOverride: Codable, Sendable, Hashable {
     public var subtitle: String?
     public var category: SpiritCategory?
     public var scotchRegion: ScotchRegion?
+    public var scotchStyle: ScotchStyle?
     public var abv: Double?
     public var ageYears: Double?
     public var style: String?
@@ -24,6 +25,7 @@ public struct ItemOverride: Codable, Sendable, Hashable {
         subtitle: String? = nil,
         category: SpiritCategory? = nil,
         scotchRegion: ScotchRegion? = nil,
+        scotchStyle: ScotchStyle? = nil,
         abv: Double? = nil,
         ageYears: Double? = nil,
         style: String? = nil,
@@ -34,6 +36,7 @@ public struct ItemOverride: Codable, Sendable, Hashable {
         self.subtitle = subtitle
         self.category = category
         self.scotchRegion = scotchRegion
+        self.scotchStyle = scotchStyle
         self.abv = abv
         self.ageYears = ageYears
         self.style = style

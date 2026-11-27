@@ -33,7 +33,7 @@ import Testing
         let items = MenuBuilder.items(from: bottles, includePending: true)
         #expect(items.count == 785)
 
-        let counts = Dictionary(uniqueKeysWithValues: MenuBuilder.categoryCounts(items).map { ($0.category, $0.count) })
+        let counts = Dictionary(grouping: items, by: \.category).mapValues(\.count)
         #expect(counts == [
             .scotch: 314,
             .bourbon: 192,
@@ -47,6 +47,17 @@ import Testing
             .brandy: 11,
         ])
         #expect(counts[.other] == nil)
+
+        // On the cover, bourbon and rye are part of American Whiskey.
+        let cover = MenuBuilder.categoryCounts(items)
+        #expect(cover.map(\.category) == [.scotch, .americanWhiskey, .irish, .japanese, .worldWhisky, .rum, .agave, .brandy])
+        #expect(cover.first { $0.category == .americanWhiskey }?.count == 276)
+    }
+
+    @Test func assignsScotchStyles() {
+        let scotch = MenuBuilder.items(from: bottles, includePending: true).filter { $0.category == .scotch }
+        let styles = Dictionary(grouping: scotch) { $0.scotchStyle! }.mapValues(\.count)
+        #expect(styles == [.singleMalt: 310, .blendedMalt: 3, .singleGrain: 1])
     }
 
     @Test func assignsScotchRegions() {

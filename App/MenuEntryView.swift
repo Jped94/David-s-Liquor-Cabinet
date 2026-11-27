@@ -5,7 +5,7 @@ import SwiftUI
 ///
 ///     Ardbeg 22 Year Old ·························· 56%
 ///     Manager's Choice Cask #2391 Sherry · Vintage 1976
-///     ● OPEN   LAST BOTTLE
+///     ● OPEN   2 SEALED
 struct MenuEntryView: View {
     let item: MenuItem
     /// Adds the category and origin to the second line (used on the cover,
@@ -37,10 +37,10 @@ struct MenuEntryView: View {
                         .foregroundStyle(Theme.muted)
                         .multilineTextAlignment(.leading)
                 }
-                if item.isOpened || item.bottleCount > 1 || item.isHidden {
+                if item.isOpened || item.sealedCount > 0 || item.isHidden {
                     HStack(spacing: 14) {
                         if item.isOpened { CapsLabel("● Open", size: 12) }
-                        if item.bottleCount > 1 { CapsLabel("\(item.bottleCount) bottles", color: Theme.muted, size: 12) }
+                        if item.sealedCount > 0 { CapsLabel("\(item.sealedCount) sealed", color: Theme.muted, size: 12) }
                         if item.isHidden { CapsLabel("Hidden from menu", color: Theme.muted, size: 12) }
                     }
                     .padding(.top, 2)

@@ -15,6 +15,7 @@ struct EditItemView: View {
     @State private var subtitle: String
     @State private var category: SpiritCategory
     @State private var scotchRegion: ScotchRegion?
+    @State private var scotchStyle: ScotchStyle
     @State private var abv: String
     @State private var age: String
     @State private var style: String
@@ -36,6 +37,7 @@ struct EditItemView: View {
         _subtitle = State(initialValue: item.menuSubtitle ?? "")
         _category = State(initialValue: item.category)
         _scotchRegion = State(initialValue: item.override?.scotchRegion ?? item.rules.scotchRegion)
+        _scotchStyle = State(initialValue: item.scotchStyle ?? .singleMalt)
         _abv = State(initialValue: item.abv.map(Format.number) ?? "")
         _age = State(initialValue: item.ageYears.map(Format.number) ?? "")
         _style = State(initialValue: item.style ?? "")
@@ -60,10 +62,16 @@ struct EditItemView: View {
                 Section("Details") {
                     Picker("Category", selection: $category) {
                         ForEach(SpiritCategory.allCases) { category in
-                            Text(category.displayName).tag(category)
+                            Text(category == .americanWhiskey ? "Other American Whiskey" : category.displayName)
+                                .tag(category)
                         }
                     }
                     if category == .scotch {
+                        Picker("Scotch style", selection: $scotchStyle) {
+                            ForEach(ScotchStyle.allCases) { style in
+                                Text(style.displayName).tag(style)
+                            }
+                        }
                         Picker("Region", selection: $scotchRegion) {
                             Text("Not set").tag(ScotchRegion?.none)
                             ForEach(ScotchRegion.allCases) { region in
@@ -139,6 +147,7 @@ struct EditItemView: View {
             subtitle: changed(subtitle.trimmingCharacters(in: .whitespacesAndNewlines), from: base.menuSubtitle ?? "", allowEmpty: true),
             category: category == base.category ? nil : category,
             scotchRegion: category == .scotch && scotchRegion != base.rules.scotchRegion ? scotchRegion : nil,
+            scotchStyle: category == .scotch && scotchStyle != (base.rules.scotchStyle ?? .singleMalt) ? scotchStyle : nil,
             abv: abvValue == base.abv ? nil : abvValue,
             ageYears: ageValue == base.ageYears ? nil : ageValue,
             style: changed(style.trimmingCharacters(in: .whitespacesAndNewlines), from: base.style ?? "", allowEmpty: true),

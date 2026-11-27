@@ -96,17 +96,27 @@ final class CollectionModel {
 
     /// Every open bottle, grouped by spirit, for the "Tonight's Pours" page.
     var openSections: [MenuSection] {
-        SpiritCategory.allCases.compactMap { category in
+        SpiritCategory.menuCategories.compactMap { category in
             let items = openedItems
-                .filter { $0.category == category }
+                .filter { $0.category.menuCategory == category }
                 .sorted { $0.menuTitle.localizedStandardCompare($1.menuTitle) == .orderedAscending }
             guard !items.isEmpty else { return nil }
             return MenuSection(title: category == .scotch ? "Scotch Whisky" : category.displayName, items: items)
         }
     }
 
-    func items(in category: SpiritCategory) -> [MenuItem] {
-        items.filter { $0.category == category }
+    /// The items on a cover entry's page (American Whiskey includes bourbon
+    /// and rye), optionally only one style of Scotch.
+    func items(in category: SpiritCategory, style: ScotchStyle? = nil) -> [MenuItem] {
+        items.filter { item in
+            item.category.menuCategory == category && (style == nil || item.scotchStyle == style)
+        }
+    }
+
+    /// The Scotch styles in the collection, for the Scotch page's filter.
+    var scotchStyles: [ScotchStyle] {
+        let present = Set(items.compactMap(\.scotchStyle))
+        return ScotchStyle.allCases.filter(present.contains)
     }
 
     func search(_ query: String) -> [MenuItem] {

@@ -59,6 +59,16 @@ import Testing
         #expect(item(producer: "Redemption", designation: nil).menuTitle == "Redemption")
     }
 
+    @Test func smallPagesStillGroupBySpirit() {
+        func agave(_ name: String) -> MenuItem {
+            let bottle = BottleRecord(inventoryID: name, wineID: name, name: name, varietal: "Agave", country: "Mexico")
+            return MenuItem(id: name, bottles: [bottle], rules: RuleEnricher.enrich(bottle))
+        }
+        let items = [agave("Fortaleza Blanco Tequila"), agave("Del Maguey Vida Mezcal")]
+        #expect(MenuSections.sections(for: .agave, items: items).map(\.title) == ["Tequila", "Mezcal"])
+        #expect(MenuSections.sections(for: .agave, items: items, ordering: .alphabetical).map(\.title) == ["Tequila & Mezcal"])
+    }
+
     @Test func alphabetSectionsIgnoreTheAndAccents() {
         #expect(MenuSections.initial(of: "The Macallan 18 Year Old") == "M")
         #expect(MenuSections.initial(of: "Élevage") == "E")
@@ -68,7 +78,7 @@ import Testing
     @Test func groupsFixtureCategoriesLikeAMenu() throws {
         let items = MenuBuilder.items(from: try FixtureTests.loadBottles(), includePending: true)
         func sections(_ category: SpiritCategory) -> [MenuSection] {
-            MenuSections.sections(for: category, items: items.filter { $0.category == category })
+            MenuSections.sections(for: category, items: items.filter { $0.category.menuCategory == category })
         }
 
         let scotch = sections(.scotch)
@@ -82,8 +92,16 @@ import Testing
         #expect(agave.map(\.title) == ["Tequila", "Mezcal", "Other Agave"])
         #expect(agave.map(\.items.count) == [44, 4, 1])
 
-        let bourbon = sections(.bourbon)
-        #expect(bourbon.allSatisfy { $0.title.count == 1 })
-        #expect(bourbon.reduce(0) { $0 + $1.items.count } == 192)
+        let american = sections(.americanWhiskey)
+        #expect(american.map(\.title) == ["Bourbon", "Rye", "Other"])
+        #expect(american.map(\.items.count) == [192, 53, 31])
+
+        let americanAZ = MenuSections.sections(
+            for: .americanWhiskey,
+            items: items.filter { $0.category.menuCategory == .americanWhiskey },
+            ordering: .alphabetical
+        )
+        #expect(americanAZ.allSatisfy { $0.title.count == 1 })
+        #expect(americanAZ.reduce(0) { $0 + $1.items.count } == 276)
     }
 }

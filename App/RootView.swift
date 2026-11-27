@@ -23,12 +23,18 @@ struct RootView: View {
                         CategoryPageView(
                             title: category == .scotch ? "Scotch Whisky" : category.displayName,
                             groupedLabel: MenuSections.groupedLabel(for: category),
-                            sections: { model, ordering in
-                                MenuSections.sections(for: category, items: model.items(in: category), ordering: ordering)
+                            styles: { model in category == .scotch ? model.scotchStyles : [] },
+                            sections: { model, ordering, style in
+                                MenuSections.sections(
+                                    for: category,
+                                    items: model.items(in: category, style: style),
+                                    ordering: ordering
+                                )
                             }
                         )
                     case .openBottles:
-                        CategoryPageView(title: "Tonight's Pours", sections: { model, _ in
+                        // Everything here is open, so no "open only" switch.
+                        CategoryPageView(title: "Tonight's Pours", showsOpenToggle: false, sections: { model, _, _ in
                             model.openSections
                         })
                     case .search:

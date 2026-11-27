@@ -107,4 +107,18 @@ import Testing
         #expect(!RuleEnricher.isOpened(bottle("X", location: "Cellar")))
         #expect(!RuleEnricher.isOpened(bottle("X")))
     }
+
+    @Test func readsScotchStyle() {
+        func style(_ name: String, vineyard: String? = nil) -> ScotchStyle {
+            RuleEnricher.scotchStyle(for: BottleRecord(inventoryID: "1", wineID: "1", name: name, vineyard: vineyard))
+        }
+        #expect(style("Lagavulin 16 Year Old", vineyard: "Single Malt Scotch Whisky, 43%") == .singleMalt)
+        #expect(style("Compass Box The Peat Monster", vineyard: "Blended Malt Scotch Whisky, 46%") == .blendedMalt)
+        #expect(style("Compass Box Monster", vineyard: "Vatted Malt Scotch Whisky 54.9%") == .blendedMalt)
+        #expect(style("Monkey Shoulder") == .blendedMalt)
+        #expect(style("Johnnie Walker Blue Label") == .blended)
+        #expect(style("Compass Box Hedonism", vineyard: "Blended Grain Scotch Whisky") == .blended)
+        #expect(style("Invergordon 33 Year Old", vineyard: "Single Grain Scotch Whisky, 46.2%") == .singleGrain)
+        #expect(style("Springbank 10 Year Old") == .singleMalt)
+    }
 }

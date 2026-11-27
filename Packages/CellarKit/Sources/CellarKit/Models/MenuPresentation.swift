@@ -101,6 +101,8 @@ public enum MenuSections {
         switch category {
         case .scotch: "By region"
         case .rum: "By country"
+        case .agave: "By spirit"
+        case .americanWhiskey: "By style"
         default: nil
         }
     }
@@ -119,20 +121,42 @@ public enum MenuSections {
         let sorted = items.sorted {
             $0.menuTitle.localizedStandardCompare($1.menuTitle) == .orderedAscending
         }
-        if sorted.count < singleSectionLimit {
-            return sorted.isEmpty ? [] : [MenuSection(title: category.displayName, items: sorted)]
-        }
+        guard !sorted.isEmpty else { return [] }
+        let single = [MenuSection(title: category.displayName, items: sorted)]
 
+        // Spirit and region groupings are worth showing however few bottles
+        // there are; letter and country headings only on a long page.
+        if ordering == .grouped {
+            switch category {
+            case .scotch, .agave, .americanWhiskey:
+                let sections = groupedSections(for: category, sorted: sorted)
+                return sections.count > 1 ? sections : single
+            default:
+                break
+            }
+        }
+        if sorted.count < singleSectionLimit { return single }
         if ordering == .alphabetical {
             return grouped(sorted, order: nil) { initial(of: $0.menuTitle) }
         }
+        return groupedSections(for: category, sorted: sorted)
+    }
 
+    private static func groupedSections(for category: SpiritCategory, sorted: [MenuItem]) -> [MenuSection] {
         switch category {
         case .scotch:
             let order = ScotchRegion.allCases.map(\.displayName) + ["Scotland"]
             return grouped(sorted, order: order) { $0.scotchRegion?.displayName ?? "Scotland" }
         case .agave:
             return grouped(sorted, order: ["Tequila", "Mezcal", "Other Agave"]) { agaveKind($0) }
+        case .americanWhiskey:
+            return grouped(sorted, order: ["Bourbon", "Rye", "Other"]) { item in
+                switch item.category {
+                case .bourbon: "Bourbon"
+                case .rye: "Rye"
+                default: "Other"
+                }
+            }
         case .rum:
             return grouped(sorted, order: nil) { $0.country ?? "Other" }
         default:

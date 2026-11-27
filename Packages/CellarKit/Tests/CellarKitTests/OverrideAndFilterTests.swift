@@ -89,10 +89,14 @@ import Testing
         let a = BottleRecord(inventoryID: "1", wineID: "9", name: "X", location: "Owl's Perch", bin: "Cabinet 1")
         let b = BottleRecord(inventoryID: "2", wineID: "9", name: "X", location: "Owl's Perch", bin: "Cabinet 1")
         let c = BottleRecord(inventoryID: "3", wineID: "9", name: "X", location: "Estancia")
-        let item = MenuItem(id: "9", bottles: [c, a, b], rules: RuleEnricher.enrich(a))
+        let d = BottleRecord(inventoryID: "4", wineID: "9", name: "X", location: "Estancia Open")
+        let item = MenuItem(id: "9", bottles: [c, a, b, d], rules: RuleEnricher.enrich(a))
         let placements = item.placements(mapping: .default)
-        #expect(placements.map(\.description) == ["Bedford · Owl's Perch · Cabinet 1", "Estancia · Estancia"])
-        #expect(placements.map(\.count) == [2, 1])
+        // The house name isn't repeated in the location.
+        #expect(placements.map(\.description) == ["Bedford · Owl's Perch · Cabinet 1", "Estancia", "Estancia · Open"])
+        #expect(placements.map(\.count) == [2, 1, 1])
+        #expect(item.openedCount == 1)
+        #expect(item.sealedCount == 3)
     }
 
     // MARK: Ordering

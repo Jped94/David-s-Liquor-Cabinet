@@ -60,8 +60,8 @@ public enum MenuBuilder {
     /// out empty categories.
     public static func categoryCounts(_ items: [MenuItem]) -> [(category: SpiritCategory, count: Int)] {
         var counts: [SpiritCategory: Int] = [:]
-        for item in items { counts[item.category, default: 0] += 1 }
-        return SpiritCategory.allCases.compactMap { category in
+        for item in items { counts[item.category.menuCategory, default: 0] += 1 }
+        return SpiritCategory.menuCategories.compactMap { category in
             counts[category].map { (category: category, count: $0) }
         }
     }

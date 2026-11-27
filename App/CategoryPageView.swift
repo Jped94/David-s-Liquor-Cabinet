@@ -8,9 +8,14 @@ struct CategoryPageView: View {
     /// Label for the grouped ordering ("By region"), when the page offers a
     /// choice between that and A–Z.
     var groupedLabel: String? = nil
+    /// Offers the "Open bottles only" switch.
+    var showsOpenToggle = true
+    /// Scotch styles to filter by (Single Malt, Blended…). The filter shows
+    /// when there's more than one.
+    var styles: @MainActor (CollectionModel) -> [ScotchStyle] = { _ in [] }
     /// Computes the sections from the model, so the page updates after a sync
-    /// or a house change.
-    let sections: @MainActor (CollectionModel, MenuOrdering) -> [MenuSection]
+    /// or a house change. The style is the chosen filter, if any.
+    let sections: @MainActor (CollectionModel, MenuOrdering, ScotchStyle?) -> [MenuSection]
 
     @Environment(CollectionModel.self) private var model
     @State private var width: CGFloat = Layout.twoColumnMinWidth
@@ -19,12 +24,13 @@ struct CategoryPageView: View {
     @State private var selected: MenuItem?
     @State private var activeSection: String?
     @State private var ordering: MenuOrdering = .grouped
+    @State private var style: ScotchStyle?
 
     /// Section buttons are shown only when there are a manageable number.
     private let maxSectionButtons = 24
 
     var body: some View {
-        let all = sections(model, ordering)
+        let all = sections(model, ordering, style)
         let visible = filtered(all)
         let total = all.reduce(0) { $0 + $1.items.count }
 
@@ -114,13 +120,27 @@ struct CategoryPageView: View {
                     .fixedSize()
                     .onChange(of: ordering) { activeSection = nil }
                 }
-                Spacer()
-                Toggle(isOn: $openOnly) {
-                    CapsLabel("Open bottles only", color: Theme.muted, size: 13)
+                let styleOptions = styles(model)
+                if styleOptions.count > 1 {
+                    Picker("Style", selection: $style) {
+                        Text("All styles").tag(ScotchStyle?.none)
+                        ForEach(styleOptions) { option in
+                            Text(option.displayName).tag(ScotchStyle?.some(option))
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .fixedSize()
+                    .onChange(of: style) { activeSection = nil }
                 }
-                .toggleStyle(.switch)
-                .tint(Theme.accent)
-                .fixedSize()
+                Spacer()
+                if showsOpenToggle {
+                    Toggle(isOn: $openOnly) {
+                        CapsLabel("Open bottles only", color: Theme.muted, size: 13)
+                    }
+                    .toggleStyle(.switch)
+                    .tint(Theme.accent)
+                    .fixedSize()
+                }
             }
         }
     }
