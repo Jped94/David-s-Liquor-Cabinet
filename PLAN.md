@@ -157,9 +157,116 @@ DavidsLiquorCabinet/            Xcode project (iPadOS 17+, SwiftUI)
   back. This replaced the original SwiftData plan: the data is about 1,600
   read-only rows, so a file is simpler and can be tested on Linux.
 - **Keychain** holds the CT credentials and the admin PIN.
-- **No backend.** The app talks to CellarTracker directly over HTTPS.
+- **No backend (v1).** The app talks to CellarTracker directly over HTTPS.
+  v2 adds a shared Cloudflare backend; see below.
 - A sanitized CSV fixture (prices and stores stripped) drives the parser and
   classifier tests.
+
+## Shared database & web (v2)
+
+Several iPads (3–4) and a web page for David and family share one copy of
+the collection, edits and photos. Syncing is manual.
+
+### Stack: Cloudflare (free tier)
+
+| Piece | Cloudflare product | Notes |
+|---|---|---|
+| API + web page | **Worker** (TypeScript) with static assets | No server to keep running |
+| Data | **D1** (SQLite) | Under 5 MB of data; the free tier allows 500 MB |
+| Photos | **R2** | About 200–400 KB per resized photo, so 1 GB at most; the free tier allows about 10 GB with no download fees |
+
+Expected cost: $0 a month. The $5 Workers Paid plan is the fallback if
+limits ever bite.
+
+### Sync: pass-through credentials, never stored
+
+1. An admin presses **Sync** on an iPad or the web page. The CellarTracker
+   login comes from the iPad Keychain or the browser's password manager.
+2. It is sent over HTTPS to `POST /api/sync`. The Worker downloads the export
+   once, then drops the login. It is never written to D1, logs or error text.
+3. The Worker decodes the windows-1252 export, parses it and derives each
+   product's menu fields (category, region, Scotch style, ABV, age, title and
+   subtitle), replaces the stored bottles, and returns the sync report.
+
+A browser page can't call CellarTracker itself because CT doesn't allow
+cross-site requests, so the Worker does the fetch.
+
+**One copy of the rules.** The parsing and classification rules move from
+CellarKit (Swift) to the Worker (TypeScript). To keep them identical:
+
+- a Swift test writes a **golden file** with the derived fields for every
+  product in the sanitized fixture;
+- the TypeScript tests must reproduce it exactly.
+
+Once the iPads read from the server, the Swift rules are only kept for the
+golden file and offline sample data.
+
+### Access: two shared passcodes
+
+- **Guest passcode** reads the menu. Each iPad enters it once.
+- **Admin passcode** additionally allows sync, edits and photos. It replaces
+  the local admin toggle.
+- `POST /api/session` exchanges a passcode for a signed token (HMAC; the
+  secret is a Worker secret). The iPad keeps the token in the Keychain; the
+  web page keeps it in an HttpOnly cookie. Failed attempts are rate-limited.
+- Passcodes are Worker secrets. They are never put in the repo or in chat.
+
+### Data model (D1)
+
+| Table | Contents |
+|---|---|
+| `bottles` | One row per CT inventory row from the latest sync: iWine, location, bin, quantity, pending, note, size, community score. **No prices, stores or purchase data are stored.** |
+| `products` | One row per iWine: CT name fields plus derived fields (category, region, style, ABV, age, title, subtitle). Rebuilt on each sync. |
+| `overrides` | The owner's edits per iWine (same fields as `ItemOverride`), updated time and device. Kept even when a product leaves CT. |
+| `photos` | iWine → R2 key, size and updated time. |
+| `syncs` | Time, counts and the sync report JSON, for history. |
+| `descriptions` | Later: Claude drafts per iWine, frozen once written. |
+
+### API
+
+| Endpoint | Who | Purpose |
+|---|---|---|
+| `POST /api/session` | anyone | Passcode → token |
+| `GET /api/menu` | guest | Products, bottles, overrides and photo refs in one JSON, with an ETag so unchanged menus cost nothing |
+| `POST /api/sync` | admin | Pass-through CT sync; returns the report |
+| `PUT /api/items/:iWine/override` | admin | Save or clear an edit |
+| `PUT /api/items/:iWine/photo` | admin | Upload a resized JPEG (the client resizes it to about 1200px) |
+| `GET /api/photos/:key` | guest | Photo from R2, cacheable |
+| `GET /api/syncs` | admin | Recent sync reports |
+
+### Clients
+
+- **iPad:** reads `/api/menu`, caches it as JSON for offline and instant
+  launch, and refreshes on launch, foreground and pull-to-refresh. The house
+  and hidden-location choices stay per iPad. Photos are cached on the device.
+  A one-time admin action uploads the edits already saved on David's iPad.
+- **Web:** a static page in the same paper-menu style. It has the menu, search
+  and house filter, and admin sync plus the report. Editing on the web comes
+  later.
+
+### Build order
+
+1. **Rules port:** the golden file from Swift, then the TypeScript
+   parser and rules, which must reproduce it.
+2. **Worker:** D1 schema and migrations, the passcode session, `/api/menu`
+   and `/api/sync`, with tests run locally (Miniflare).
+3. **Deploy** (needs the setup below): a GitHub Action deploys on push.
+4. **iPad client:** reads from the server, plus passcode entry, edits
+   through the API, and migrating existing edits.
+5. **Web page.**
+6. **Photos:** "Add photo" in admin, R2 upload, and on-device caching.
+7. **Claude descriptions** (Anthropic key as a Worker secret).
+
+### Setup the owner does (about 20 minutes, once)
+
+1. Create a free Cloudflare account. Whoever owns it controls the data.
+2. Create an API token from the "Edit Cloudflare Workers" template, with D1
+   and R2 access added.
+3. Add it to the GitHub repo secrets as `CLOUDFLARE_API_TOKEN`, along with
+   `CLOUDFLARE_ACCOUNT_ID`.
+4. Set the two passcodes and the token-signing secret with
+   `wrangler secret put` (exact commands are in the README).
+5. Later: an Anthropic API key for descriptions.
 
 ## App structure
 
@@ -203,9 +310,9 @@ side), AI-drafted tasting descriptions that David reviews and edits.
 1. **Houses:** Estancia and Bedford. Each iPad filters to its own house (see above).
 2. **Descriptions:** start with AI drafts. They can be edited or hidden per
    bottle, and switched off globally.
-3. **Photos:** none in v1. The menu uses a typographic design; photos may come later.
-4. **Guest extras:** guests see community scores, bottle counts and "last
-   bottle" badges. "On order" bottles are hidden. Still to confirm: what
+3. **Photos:** none in v1. In v2, David adds them from the iPad (stored in R2).
+4. **Guest extras:** guests see community scores and sealed/open bottle
+   counts. "On order" bottles are hidden. Still to confirm: what
    David uses Pending for.
 
 ## Notes
@@ -214,3 +321,11 @@ side), AI-drafted tasting descriptions that David reviews and edits.
   tested anywhere Swift runs.
 - Never commit real exports. `*.csv` is git-ignored, and only sanitized fixtures
   go in the repo.
+
+## Decisions (v2)
+
+5. **Backend:** Cloudflare Worker + D1 + R2, on the free tier.
+6. **Sync:** manual, from any iPad or the web page. CT credentials are passed
+   through for each sync and never stored on the server.
+7. **Access:** shared guest and admin passcodes. The web page is for David
+   and family only.
