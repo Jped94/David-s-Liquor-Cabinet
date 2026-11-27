@@ -1,0 +1,78 @@
+name: Deploy server
+
+# Publishes the Cloudflare Worker when server code changes. Needs these
+# repository secrets (Settings → Secrets and variables → Actions):
+#   CLOUDFLARE_API_TOKEN, GUEST_PASSCODE, ADMIN_PASSCODE, SESSION_SECRET
+# Until they're all set, the deploy is skipped rather than failing.
+
+on:
+  push:
+    branches: [main, claude/liquor-collection-ipad-app-tglr4n]
+    paths: ["server/**", ".github/workflows/deploy.yml"]
+
+concurrency:
+  group: deploy-server
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: server
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      GUEST_PASSCODE: ${{ secrets.GUEST_PASSCODE }}
+      ADMIN_PASSCODE: ${{ secrets.ADMIN_PASSCODE }}
+      SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+    steps:
+      - name: Check secrets
+        id: secrets
+        working-directory: .
+        run: |
+          missing=""
+          for name in CLOUDFLARE_API_TOKEN GUEST_PASSCODE ADMIN_PASSCODE SESSION_SECRET; do
+            if [ -z "${!name}" ]; then missing="$missing $name"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::warning::Skipping deploy; missing repository secrets:$missing"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          elif [ "${#SESSION_SECRET}" -lt 32 ]; then
+            echo "::error::SESSION_SECRET must be at least 32 characters (use: openssl rand -base64 48)"
+            exit 1
+          elif [ "$GUEST_PASSCODE" = "$ADMIN_PASSCODE" ]; then
+            echo "::error::GUEST_PASSCODE and ADMIN_PASSCODE must be different"
+            exit 1
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.secrets.outputs.ready == 'true'
+        uses: actions/checkout@v4
+      - if: steps.secrets.outputs.ready == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - if: steps.secrets.outputs.ready == 'true'
+        run: npx -y npm@11 ci
+      - if: steps.secrets.outputs.ready == 'true'
+        name: Test
+        run: npm run typecheck && npm test
+      - if: steps.secrets.outputs.ready == 'true'
+        name: Apply database migrations
+        run: npx wrangler d1 migrations apply liquor-cabinet --remote
+      - if: steps.secrets.outputs.ready == 'true'
+        name: Deploy Worker
+        run: npx wrangler deploy
+      - if: steps.secrets.outputs.ready == 'true'
+        name: Upload passcodes and session secret
+        run: |
+          node -e '
+            const s = { GUEST_PASSCODE: process.env.GUEST_PASSCODE, ADMIN_PASSCODE: process.env.ADMIN_PASSCODE, SESSION_SECRET: process.env.SESSION_SECRET };
+            require("fs").writeFileSync(process.env.RUNNER_TEMP + "/secrets.json", JSON.stringify(s));
+          '
+          npx wrangler secret bulk "$RUNNER_TEMP/secrets.json"
+          rm "$RUNNER_TEMP/secrets.json"

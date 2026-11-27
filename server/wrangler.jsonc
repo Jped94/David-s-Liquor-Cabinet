@@ -4,14 +4,14 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "liquor-cabinet",
   "main": "src/index.ts",
+  "account_id": "0904f98322ff2119789ad2e18d48d61d",
   "compatibility_date": "2026-11-01",
   "observability": { "enabled": true },
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "liquor-cabinet",
-      // Replaced with the real ID after `wrangler d1 create liquor-cabinet`.
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "900cccd0-9cd8-4f5f-8c92-3caa8ef2db3d",
       "migrations_dir": "migrations"
     }
   ]
