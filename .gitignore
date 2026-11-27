@@ -16,3 +16,6 @@ DerivedData/
 node_modules/
 .wrangler/
 .dev.vars
+
+# App secrets (see Config/Secrets.example.xcconfig)
+Config/Secrets.xcconfig
