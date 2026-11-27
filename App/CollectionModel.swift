@@ -12,7 +12,11 @@ import Observation
 final class CollectionModel {
     enum Source { case sample, cellarTracker }
 
-    private(set) var bottles: [BottleRecord] = []
+    private(set) var bottles: [BottleRecord] = [] {
+        // Parse names once per download, so house and location changes are instant.
+        didSet { catalog = ItemBasics.catalog(for: bottles) }
+    }
+    @ObservationIgnored private var catalog: [String: ItemBasics] = [:]
     private(set) var items: [MenuItem] = []
     private(set) var source: Source = .sample
     private(set) var lastSynced: Date?
@@ -272,7 +276,8 @@ final class CollectionModel {
             mapping: mapping,
             hiddenLocations: hiddenLocations,
             overrides: overrides,
-            includeHidden: isAdmin
+            includeHidden: isAdmin,
+            catalog: catalog
         )
     }
 }

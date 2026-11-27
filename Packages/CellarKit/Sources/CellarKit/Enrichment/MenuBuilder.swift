@@ -20,6 +20,8 @@ public enum MenuBuilder {
     ///     this is true. Guests never see them.
     ///   - includeHidden: Items the owner hid are left out unless this is
     ///     true (admin mode).
+    ///   - catalog: Precomputed `ItemBasics.catalog(for:)` of these bottles,
+    ///     so rebuilding (e.g. on a house change) skips the text parsing.
     /// - Returns: Menu items sorted by name.
     public static func items(
         from bottles: [BottleRecord],
@@ -28,7 +30,8 @@ public enum MenuBuilder {
         hiddenLocations: Set<String> = [],
         overrides: [String: ItemOverride] = [:],
         includePending: Bool = false,
-        includeHidden: Bool = false
+        includeHidden: Bool = false,
+        catalog: [String: ItemBasics]? = nil
     ) -> [MenuItem] {
         let hidden = Set(hiddenLocations.map(HouseMapping.normalize))
         let visible = bottles.filter { bottle in
@@ -50,7 +53,8 @@ public enum MenuBuilder {
         return order
             .compactMap { id -> MenuItem? in
                 guard let group = groups[id], let first = group.first else { return nil }
-                let item = MenuItem(id: id, bottles: group, rules: RuleEnricher.enrich(first), override: overrides[id])
+                let basics = catalog?[id] ?? ItemBasics(first)
+                let item = MenuItem(id: id, bottles: group, basics: basics, override: overrides[id])
                 return item.isHidden && !includeHidden ? nil : item
             }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }

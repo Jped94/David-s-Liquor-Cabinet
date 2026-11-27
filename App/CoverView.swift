@@ -62,41 +62,30 @@ struct CoverView: View {
     private var topBar: some View {
         @Bindable var model = model
         return HStack {
-            Menu {
-                Picker("House", selection: $model.house) {
-                    Text("Bedford").tag(HouseFilter.house(.bedford))
-                    Text("Estancia").tag(HouseFilter.house(.estancia))
-                    Text("Both houses").tag(HouseFilter.all)
-                }
-                if case .house(let house) = model.house {
-                    Button {
-                        choosingLocationsFor = house
+            // The visible label is an ordinary view with the menu laid over
+            // it. A Menu's own label shows new text in its old frame before
+            // resizing, which clipped "Both houses" for a moment.
+            houseLabel
+                .accessibilityHidden(true)
+                .overlay {
+                    Menu {
+                        Picker("House", selection: $model.house) {
+                            Text("Bedford").tag(HouseFilter.house(.bedford))
+                            Text("Estancia").tag(HouseFilter.house(.estancia))
+                            Text("Both houses").tag(HouseFilter.all)
+                        }
+                        if case .house(let house) = model.house {
+                            Button {
+                                choosingLocationsFor = house
+                            } label: {
+                                Label("Choose \(house.name) locations…", systemImage: "checklist")
+                            }
+                        }
                     } label: {
-                        Label("Choose \(house.name) locations…", systemImage: "checklist")
+                        Color.clear.contentShape(Rectangle())
                     }
+                    .accessibilityLabel("House: \(houseName)")
                 }
-            } label: {
-                HStack(spacing: 6) {
-                    CapsLabel(houseName, size: 15)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Theme.accent)
-                    if let locationSummary {
-                        Text(locationSummary)
-                            .font(Theme.italic(16))
-                            .foregroundStyle(Theme.muted)
-                            .padding(.leading, 4)
-                    }
-                }
-                .frame(minHeight: 44)
-                // A new identity per house makes the label swap in at its
-                // new size instead of showing the new text in the old frame
-                // and then stretching.
-                .id(houseName + (locationSummary ?? ""))
-            }
-            .fixedSize()
-            .transaction { $0.animation = nil }
-            .accessibilityLabel("House: \(houseName)")
 
             Spacer()
 
@@ -118,6 +107,22 @@ struct CoverView: View {
             }
             .accessibilityLabel("Settings")
         }
+    }
+
+    private var houseLabel: some View {
+        HStack(spacing: 6) {
+            CapsLabel(houseName, size: 15)
+            Image(systemName: "chevron.down")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Theme.accent)
+            if let locationSummary {
+                Text(locationSummary)
+                    .font(Theme.italic(16))
+                    .foregroundStyle(Theme.muted)
+                    .padding(.leading, 4)
+            }
+        }
+        .frame(minHeight: 44)
     }
 
     /// "3 of 5 locations" when some of the house's locations are hidden.

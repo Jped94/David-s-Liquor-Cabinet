@@ -7,14 +7,41 @@ extension MenuItem {
     /// e.g. "Ardbeg 22 Year Old", or producer plus a short expression name,
     /// e.g. "WhistlePig The Boss Hog XI".
     public var menuTitle: String {
-        override?.title?.nonBlank ?? MenuWording.split(self).title
+        override?.title?.nonBlank ?? wording.title
     }
 
     /// The second line: the rest of the expression name and the vintage,
     /// e.g. "Manager's Choice Cask #2391 Sherry · Vintage 1976".
     public var menuSubtitle: String? {
         if let subtitle = override?.subtitle { return subtitle.nonBlank }
-        return MenuWording.split(self).subtitle
+        return wording.subtitle
+    }
+}
+
+/// An item's menu lines as worded from CellarTracker data (before edits).
+public struct ItemWording: Sendable, Hashable {
+    public var title: String
+    public var subtitle: String?
+}
+
+/// What's derived from a product's CellarTracker data, worked out once per
+/// download rather than every time the menu is rebuilt.
+public struct ItemBasics: Sendable, Hashable {
+    public var rules: RuleEnrichment
+    public var wording: ItemWording
+
+    public init(_ bottle: BottleRecord) {
+        rules = RuleEnricher.enrich(bottle)
+        wording = MenuWording.split(bottle)
+    }
+
+    /// Basics for every product in `bottles`, keyed by `iWine`.
+    public static func catalog(for bottles: [BottleRecord]) -> [String: ItemBasics] {
+        var catalog: [String: ItemBasics] = [:]
+        for bottle in bottles where catalog[bottle.wineID] == nil {
+            catalog[bottle.wineID] = ItemBasics(bottle)
+        }
+        return catalog
     }
 }
 
@@ -22,15 +49,14 @@ enum MenuWording {
     /// Expression names up to this length are folded into the title.
     static let shortRestLimit = 28
 
-    static func split(_ item: MenuItem) -> (title: String, subtitle: String?) {
-        let producer = item.producer
-        let vintageText = item.vintage.map { "Vintage \($0)" }
+    static func split(_ bottle: BottleRecord) -> ItemWording {
+        let vintageText = bottle.vintage.map { "Vintage \($0)" }
 
-        guard let producer else {
-            return (item.name, vintageText)
+        guard let producer = bottle.producer else {
+            return ItemWording(title: bottle.name, subtitle: vintageText)
         }
 
-        var rest = item.designation ?? ""
+        var rest = bottle.designation ?? ""
         var ageText: String?
         if let (age, range) = ageStatement(in: rest) {
             ageText = age
@@ -47,9 +73,9 @@ enum MenuWording {
         }
 
         // Don't repeat a year the expression name already mentions.
-        let vintage = item.vintage.flatMap { rest.contains(String($0)) ? nil : vintageText }
+        let vintage = bottle.vintage.flatMap { rest.contains(String($0)) ? nil : vintageText }
         let parts = [rest.isEmpty ? nil : rest, vintage].compactMap { $0 }
-        return (title, parts.isEmpty ? nil : parts.joined(separator: " · "))
+        return ItemWording(title: title, subtitle: parts.isEmpty ? nil : parts.joined(separator: " · "))
     }
 
     /// Finds an age statement ("22 Year Old", "18yrs", "10 YO") and returns

@@ -10,12 +10,23 @@ public struct MenuItem: Sendable, Hashable, Identifiable {
     public var rules: RuleEnrichment
     /// The owner's edits, if any. The effective values below prefer these.
     public var override: ItemOverride?
+    /// The menu lines worded from CellarTracker data.
+    public var wording: ItemWording
 
     public init(id: String, bottles: [BottleRecord], rules: RuleEnrichment, override: ItemOverride? = nil) {
         self.id = id
         self.bottles = bottles
         self.rules = rules
         self.override = override
+        self.wording = MenuWording.split(bottles[0])
+    }
+
+    public init(id: String, bottles: [BottleRecord], basics: ItemBasics, override: ItemOverride? = nil) {
+        self.id = id
+        self.bottles = bottles
+        self.rules = basics.rules
+        self.override = override
+        self.wording = basics.wording
     }
 
     /// Bottle used for the shared, product-level fields.
