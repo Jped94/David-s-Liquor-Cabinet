@@ -99,6 +99,8 @@ export async function requestRole(request: Request, env: Env): Promise<Role | un
 /** Throws 401/403 unless the request has at least `needed`. */
 export async function requireRole(request: Request, env: Env, needed: Role): Promise<Role> {
   const role = await requestRole(request, env);
+  // Without a guest passcode, reading is open to anyone.
+  if (needed === "guest" && !env.GUEST_PASSCODE) return role ?? "guest";
   if (!role) throw new HttpError(401, "Enter the passcode to continue.");
   if (needed === "admin" && role !== "admin") throw new HttpError(403, "That needs the admin passcode.");
   return role;

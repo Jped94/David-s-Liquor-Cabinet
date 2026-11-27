@@ -72,6 +72,19 @@ describe("menu", () => {
   });
 });
 
+describe("without a guest passcode", () => {
+  it("anyone can read the menu, but edits still need admin", async () => {
+    const { default: worker } = await import("../../src/index.js");
+    const open = { ...env, GUEST_PASSCODE: "" };
+    const fetchOpen = (path: string, init?: RequestInit) =>
+      worker.fetch(new Request(`https://cabinet.test${path}`, init), open);
+
+    expect((await fetchOpen("/api/menu")).status).toBe(200);
+    expect(await (await fetchOpen("/api/config")).json()).toEqual({ guestPasscodeRequired: false });
+    expect((await fetchOpen("/api/items/1/override", { method: "PUT", body: "{}" })).status).toBe(401);
+  });
+});
+
 describe("edits", () => {
   it("are admin only", async () => {
     const guest = await tokenFor("guest-pass");

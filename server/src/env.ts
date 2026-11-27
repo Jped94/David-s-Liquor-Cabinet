@@ -1,7 +1,10 @@
 export interface Env {
   DB: D1Database;
-  /** Lets an iPad or browser read the menu. */
-  GUEST_PASSCODE: string;
+  /**
+   * Lets an iPad or browser read the menu. Optional: when it isn't set, the
+   * menu can be read without a passcode (edits and sync still need admin).
+   */
+  GUEST_PASSCODE?: string;
   /** Also allows syncing, edits and photos. */
   ADMIN_PASSCODE: string;
   /** Signs session tokens. Changing it signs every device out. */

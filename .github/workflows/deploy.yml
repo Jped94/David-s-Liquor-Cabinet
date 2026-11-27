@@ -2,7 +2,8 @@ name: Deploy server
 
 # Publishes the Cloudflare Worker when server code changes. Needs these
 # repository secrets (Settings → Secrets and variables → Actions):
-#   CLOUDFLARE_API_TOKEN, GUEST_PASSCODE, ADMIN_PASSCODE, SESSION_SECRET
+#   CLOUDFLARE_API_TOKEN, ADMIN_PASSCODE, SESSION_SECRET
+#   GUEST_PASSCODE is optional: without it, the menu can be read without a passcode.
 # Until they're all set, the deploy is skipped rather than failing.
 
 on:
@@ -32,7 +33,7 @@ jobs:
         working-directory: .
         run: |
           missing=""
-          for name in CLOUDFLARE_API_TOKEN GUEST_PASSCODE ADMIN_PASSCODE SESSION_SECRET; do
+          for name in CLOUDFLARE_API_TOKEN ADMIN_PASSCODE SESSION_SECRET; do
             if [ -z "${!name}" ]; then missing="$missing $name"; fi
           done
           if [ -n "$missing" ]; then
@@ -41,7 +42,7 @@ jobs:
           elif [ "${#SESSION_SECRET}" -lt 32 ]; then
             echo "::error::SESSION_SECRET must be at least 32 characters (use: openssl rand -base64 48)"
             exit 1
-          elif [ "$GUEST_PASSCODE" = "$ADMIN_PASSCODE" ]; then
+          elif [ -n "$GUEST_PASSCODE" ] && [ "$GUEST_PASSCODE" = "$ADMIN_PASSCODE" ]; then
             echo "::error::GUEST_PASSCODE and ADMIN_PASSCODE must be different"
             exit 1
           else
@@ -71,8 +72,13 @@ jobs:
         name: Upload passcodes and session secret
         run: |
           node -e '
-            const s = { GUEST_PASSCODE: process.env.GUEST_PASSCODE, ADMIN_PASSCODE: process.env.ADMIN_PASSCODE, SESSION_SECRET: process.env.SESSION_SECRET };
+            const s = { ADMIN_PASSCODE: process.env.ADMIN_PASSCODE, SESSION_SECRET: process.env.SESSION_SECRET };
+            if (process.env.GUEST_PASSCODE) s.GUEST_PASSCODE = process.env.GUEST_PASSCODE;
             require("fs").writeFileSync(process.env.RUNNER_TEMP + "/secrets.json", JSON.stringify(s));
           '
           npx wrangler secret bulk "$RUNNER_TEMP/secrets.json"
           rm "$RUNNER_TEMP/secrets.json"
+          # No guest passcode: make sure an old one isn't left behind.
+          if [ -z "$GUEST_PASSCODE" ]; then
+            npx wrangler secret delete GUEST_PASSCODE --force 2>/dev/null || true
+          fi

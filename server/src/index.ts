@@ -36,6 +36,10 @@ async function route(request: Request, env: Env): Promise<Response> {
     return json({ ok: true }, { headers: { "Set-Cookie": clearedCookie } });
   }
   if (path === "/api/menu" && method === "GET") return getMenu(request, env);
+  if (path === "/api/config" && method === "GET") {
+    // Tells clients whether reading the menu needs a passcode.
+    return json({ guestPasscodeRequired: Boolean(env.GUEST_PASSCODE) });
+  }
   if (path === "/api/syncs" && method === "GET") return getSyncs(request, env);
 
   const item = path.match(/^\/api\/items\/([0-9A-Za-z_-]{1,40})\/override$/);
