@@ -19,3 +19,4 @@ node_modules/
 
 # App secrets (see Config/Secrets.example.xcconfig)
 Config/Secrets.xcconfig
+Config/Info.plist
