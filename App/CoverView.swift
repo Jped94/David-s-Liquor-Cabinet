@@ -43,7 +43,7 @@ struct CoverView: View {
         }
         .background(Theme.paper.ignoresSafeArea())
         .readWidth($width)
-        .refreshable { await model.refresh() }
+        .refreshable { await model.sync() }
         .navigationTitle("Contents")
         .toolbar(.hidden, for: .navigationBar)
         .sheet(item: $selected) { item in

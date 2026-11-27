@@ -267,7 +267,20 @@ final class CollectionModel {
         return count
     }
 
-    // MARK: Sync from CellarTracker
+    // MARK: Sync
+
+    /// The one Sync action: in admin mode with a CellarTracker login saved on
+    /// this iPad, a full sync from CellarTracker (which also brings this
+    /// iPad up to date); otherwise just the latest menu from the server.
+    func sync() async {
+        if isAdmin && hasCredentials {
+            await syncNow()
+        } else {
+            await refresh()
+        }
+    }
+
+    var isBusy: Bool { isSyncing || isRefreshing }
 
     /// Syncs with the saved CellarTracker login.
     func syncNow() async {

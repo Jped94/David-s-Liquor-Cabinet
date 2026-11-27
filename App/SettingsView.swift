@@ -51,24 +51,26 @@ struct SettingsView: View {
                 Text(model.lastSynced.map { $0.formatted(.relative(presentation: .named)) } ?? "Not yet")
             }
             Button {
-                Task { await model.refresh() }
+                Task { await model.sync() }
             } label: {
                 HStack {
-                    Text("Check for updates")
-                    if model.isRefreshing {
+                    Text("Sync now")
+                    if model.isBusy {
                         Spacer()
                         ProgressView()
                     }
                 }
             }
-            .disabled(!model.isServerConfigured || model.isRefreshing)
+            .disabled(!model.isServerConfigured || model.isBusy)
             if let error = model.syncError {
                 Text(error).foregroundStyle(.red)
             }
         } header: {
             Text("Menu")
         } footer: {
-            Text("Every iPad shows the same collection and edits. The menu updates by itself when the app opens.")
+            Text(model.isAdmin && model.hasCredentials
+                ? "Downloads the collection from CellarTracker and updates every iPad and the web page."
+                : "Every iPad shows the same collection and edits, and checks for changes whenever the app opens. In admin mode with a CellarTracker login, Sync also downloads from CellarTracker.")
         }
     }
 
@@ -105,18 +107,7 @@ struct SettingsView: View {
     private var cellarTrackerSection: some View {
         Section {
             if model.hasCredentials {
-                Button {
-                    Task { await model.syncNow() }
-                } label: {
-                    HStack {
-                        Text("Sync from CellarTracker")
-                        if model.isSyncing {
-                            Spacer()
-                            ProgressView()
-                        }
-                    }
-                }
-                .disabled(model.isSyncing)
+                LabeledContent("Login", value: "Saved on this iPad")
                 Button("Forget CellarTracker login", role: .destructive) { confirmingSignOut = true }
                     .confirmationDialog(
                         "Forget the CellarTracker login on this iPad?",
