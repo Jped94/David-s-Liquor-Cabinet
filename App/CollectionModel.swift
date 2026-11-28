@@ -144,11 +144,16 @@ final class CollectionModel {
     func search(_ query: String) -> [MenuItem] {
         let query = query.trimmingCharacters(in: .whitespaces)
         guard !query.isEmpty else { return items }
-        return items.filter { item in
-            [item.name, item.menuTitle, item.producer, item.originLine, item.style]
-                .compactMap { $0 }
-                .contains { $0.localizedCaseInsensitiveContains(query) }
-        }
+        return items.filter { Self.matches($0, query) }
+    }
+
+    /// Whether an item matches a search: name, title, distillery, origin or style.
+    static func matches(_ item: MenuItem, _ query: String) -> Bool {
+        let query = query.trimmingCharacters(in: .whitespaces)
+        guard !query.isEmpty else { return true }
+        return [item.name, item.menuTitle, item.menuSubtitle, item.producer, item.originLine, item.style]
+            .compactMap { $0 }
+            .contains { $0.localizedCaseInsensitiveContains(query) }
     }
 
     // MARK: Locations

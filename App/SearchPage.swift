@@ -54,6 +54,12 @@ struct SearchPage: View {
         .navigationTitle("Search")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Theme.paper, for: .navigationBar)
+        .toolbar {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                HouseMenu()
+                SettingsButton()
+            }
+        }
         .onAppear { fieldFocused = true }
         .sheet(item: $selected) { item in
             TastingCardView(item: item)

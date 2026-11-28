@@ -8,8 +8,6 @@ struct CoverView: View {
     @State private var width: CGFloat = Layout.twoColumnMinWidth
     private var isWide: Bool { width >= Layout.twoColumnMinWidth }
     @State private var selected: MenuItem?
-    @State private var showingSettings = false
-    @State private var choosingLocationsFor: House?
 
     /// How many open bottles the cover lists.
     private let poursShown = 6
@@ -49,94 +47,17 @@ struct CoverView: View {
         .sheet(item: $selected) { item in
             TastingCardView(item: item)
         }
-        .sheet(isPresented: $showingSettings) {
-            SettingsView()
-        }
-        .sheet(item: $choosingLocationsFor) { house in
-            LocationsSheet(house: house)
-        }
     }
 
     // MARK: Top bar
 
     private var topBar: some View {
-        @Bindable var model = model
-        return HStack {
-            // The visible label is an ordinary view with the menu laid over
-            // it. A Menu's own label shows new text in its old frame before
-            // resizing, which clipped "Both houses" for a moment.
-            houseLabel
-                .accessibilityHidden(true)
-                .overlay {
-                    Menu {
-                        Picker("House", selection: $model.house) {
-                            Text("Bedford").tag(HouseFilter.house(.bedford))
-                            Text("Estancia").tag(HouseFilter.house(.estancia))
-                            Text("Both houses").tag(HouseFilter.all)
-                        }
-                        if case .house(let house) = model.house {
-                            Button {
-                                choosingLocationsFor = house
-                            } label: {
-                                Label("Choose \(house.name) locations…", systemImage: "checklist")
-                            }
-                        }
-                    } label: {
-                        Color.clear.contentShape(Rectangle())
-                    }
-                    .accessibilityLabel("House: \(houseName)")
-                }
-
+        HStack {
+            HouseMenu()
             Spacer()
-
-            NavigationLink(value: Route.search) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 19))
-                    .foregroundStyle(Theme.muted)
-                    .frame(width: 44, height: 44)
-            }
-            .accessibilityLabel("Search")
-
-            Button {
-                showingSettings = true
-            } label: {
-                Image(systemName: "gearshape")
-                    .font(.system(size: 18))
-                    .foregroundStyle(Theme.muted.opacity(0.7))
-                    .frame(width: 44, height: 44)
-            }
-            .accessibilityLabel("Settings")
-        }
-    }
-
-    private var houseLabel: some View {
-        HStack(spacing: 6) {
-            CapsLabel(houseName, size: 15)
-            Image(systemName: "chevron.down")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Theme.accent)
-            if let locationSummary {
-                Text(locationSummary)
-                    .font(Theme.italic(16))
-                    .foregroundStyle(Theme.muted)
-                    .padding(.leading, 4)
-            }
-        }
-        .frame(minHeight: 44)
-    }
-
-    /// "3 of 5 locations" when some of the house's locations are hidden.
-    private var locationSummary: String? {
-        guard case .house(let house) = model.house else { return nil }
-        let all = model.locations(for: house)
-        let shown = all.filter(model.isLocationShown).count
-        return shown == all.count ? nil : "\(shown) of \(all.count) locations"
-    }
-
-    private var houseName: String {
-        switch model.house {
-        case .all: "Both houses"
-        case .house(let house): house.name
+            NavigationLink(value: Route.search) { SearchIcon() }
+                .accessibilityLabel("Search")
+            SettingsButton()
         }
     }
 

@@ -25,6 +25,8 @@ struct CategoryPageView: View {
     @State private var activeSection: String?
     @State private var ordering: MenuOrdering = .grouped
     @State private var style: ScotchStyle?
+    @State private var isSearching = false
+    @State private var query = ""
 
     /// Section buttons are shown only when there are a manageable number.
     private let maxSectionButtons = 24
@@ -32,15 +34,27 @@ struct CategoryPageView: View {
     var body: some View {
         let all = sections(model, ordering, style)
         let visible = filtered(all)
+        let searching = isSearching && !query.trimmingCharacters(in: .whitespaces).isEmpty
         let total = all.reduce(0) { $0 + $1.items.count }
 
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(spacing: 24) {
                     header(total: total)
-                    controls(all: all, proxy: proxy)
+                    if isSearching {
+                        InlineSearchField(text: $query, prompt: "Search \(title)") {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                isSearching = false
+                                query = ""
+                            }
+                        }
+                        .transition(.opacity)
+                    }
+                    if !searching {
+                        controls(all: all, proxy: proxy)
+                    }
                     if visible.isEmpty {
-                        Text(openOnly ? "Nothing open in this section." : "Nothing here yet.")
+                        Text(searching ? "Nothing on this page matches “\(query)”." : openOnly ? "Nothing open in this section." : "Nothing here yet.")
                             .font(Theme.italic(19))
                             .foregroundStyle(Theme.muted)
                             .padding(.top, 40)
@@ -68,15 +82,34 @@ struct CategoryPageView: View {
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Theme.paper, for: .navigationBar)
+        .toolbar {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                HouseMenu()
+                Button {
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        isSearching.toggle()
+                        if !isSearching { query = "" }
+                    }
+                } label: {
+                    SearchIcon(isActive: isSearching)
+                }
+                .accessibilityLabel(isSearching ? "Close search" : "Search this page")
+                SettingsButton()
+            }
+        }
         .sheet(item: $selected) { item in
             TastingCardView(item: item)
         }
     }
 
+    /// Applies "open bottles only" and the page search.
     private func filtered(_ sections: [MenuSection]) -> [MenuSection] {
-        guard openOnly else { return sections }
+        let query = isSearching ? query : ""
+        guard openOnly || !query.trimmingCharacters(in: .whitespaces).isEmpty else { return sections }
         return sections.compactMap { section in
-            let items = section.items.filter(\.isOpened)
+            let items = section.items.filter { item in
+                (!openOnly || item.isOpened) && CollectionModel.matches(item, query)
+            }
             return items.isEmpty ? nil : MenuSection(title: section.title, items: items)
         }
     }
