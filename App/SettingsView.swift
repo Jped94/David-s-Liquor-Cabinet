@@ -172,7 +172,7 @@ struct SettingsView: View {
         Section("Collection") {
             LabeledContent("Showing", value: model.isSampleData ? "Sample data" : "CellarTracker")
             LabeledContent("Bottles", value: "\(model.totalBottles)")
-            LabeledContent("Products", value: "\(MenuBuilder.items(from: model.bottles).count)")
+            LabeledContent("Products", value: "\(model.productCount)")
             if !model.unmappedLocations.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Locations not assigned to a house")

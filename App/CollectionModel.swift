@@ -99,6 +99,8 @@ final class CollectionModel {
     var isServerConfigured: Bool { client != nil && AppConfig.appKey != nil }
     var openedItems: [MenuItem] { items.filter(\.isOpened) }
     var totalBottles: Int { bottles.reduce(0) { $0 + $1.quantity } }
+    /// Products in the whole collection (every house), not counting pending ones.
+    var productCount: Int { Set(bottles.lazy.filter { !$0.isPending }.map(\.wineID)).count }
     var unmappedLocations: [String] { mapping.unmappedLocations(in: bottles.filter { !$0.isPending }) }
 
     var categoryCounts: [(category: SpiritCategory, count: Int)] {
