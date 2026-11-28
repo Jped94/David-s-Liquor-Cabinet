@@ -26,6 +26,13 @@ describe("sessions", () => {
     expect(await (await login("admin-pass")).json()).toMatchObject({ role: "admin" });
   });
 
+  it("reports the current role", async () => {
+    expect(await (await call("/api/session")).json()).toEqual({ role: null });
+    const token = await tokenFor("admin-pass");
+    const me = await call("/api/session", { headers: { Cookie: `lc_session=${token}` } });
+    expect(await me.json()).toEqual({ role: "admin" });
+  });
+
   it("refuses a wrong passcode, then rate-limits", async () => {
     for (let i = 0; i < 10; i++) expect((await login("nope", "198.51.100.7")).status).toBe(401);
     const limited = await login("guest-pass", "198.51.100.7");

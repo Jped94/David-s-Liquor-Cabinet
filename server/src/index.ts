@@ -3,6 +3,7 @@ import {
   clearFailures,
   clearedCookie,
   recordFailure,
+  requestRole,
   requireRole,
   roleForPasscode,
   sessionCookie,
@@ -33,6 +34,10 @@ async function route(request: Request, env: Env): Promise<Response> {
   const method = request.method;
 
   if (path === "/api/session" && method === "POST") return createSession(request, env);
+  if (path === "/api/session" && method === "GET") {
+    // Which role the current cookie or token has (the web page checks this).
+    return json({ role: (await requestRole(request, env)) ?? null });
+  }
   if (path === "/api/session" && method === "DELETE") {
     return json({ ok: true }, { headers: { "Set-Cookie": clearedCookie } });
   }
