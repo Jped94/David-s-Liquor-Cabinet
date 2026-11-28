@@ -85,6 +85,14 @@ import Testing
         })
     }
 
+    @Test func linksToCellarTracker() {
+        let bottle = BottleRecord(inventoryID: "1", wineID: "4833686", name: "Aberfeldy 25")
+        let item = MenuItem(id: "4833686", bottles: [bottle], rules: RuleEnricher.enrich(bottle))
+        #expect(item.cellarTrackerURL?.absoluteString == "https://www.cellartracker.com/wine.asp?iWine=4833686")
+        let odd = MenuItem(id: "abc", bottles: [bottle], rules: RuleEnricher.enrich(bottle))
+        #expect(odd.cellarTrackerURL == nil)
+    }
+
     @Test func placementsGroupByLocationAndBin() {
         let a = BottleRecord(inventoryID: "1", wineID: "9", name: "X", location: "Owl's Perch", bin: "Cabinet 1")
         let b = BottleRecord(inventoryID: "2", wineID: "9", name: "X", location: "Owl's Perch", bin: "Cabinet 1")

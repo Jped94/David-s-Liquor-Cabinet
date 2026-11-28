@@ -107,6 +107,12 @@ public struct MenuItem: Sendable, Hashable, Identifiable {
         return bottles.compactMap(\.note).filter { seen.insert($0).inserted }
     }
 
+    /// The product's public page on CellarTracker (community notes and scores).
+    public var cellarTrackerURL: URL? {
+        guard !id.isEmpty, id.allSatisfy(\.isNumber) else { return nil }
+        return URL(string: "https://www.cellartracker.com/wine.asp?iWine=\(id)")
+    }
+
     /// Community score (CT's CScore), if any bottle has one.
     public var communityScore: Double? { bottles.lazy.compactMap(\.communityScore).first }
 

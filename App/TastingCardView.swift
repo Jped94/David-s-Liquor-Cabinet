@@ -74,6 +74,19 @@ struct TastingCardView: View {
                     }
                 }
 
+                if let url = item.cellarTrackerURL {
+                    Link(destination: url) {
+                        HStack(spacing: 6) {
+                            CapsLabel("View on CellarTracker", size: 13)
+                            Image(systemName: "arrow.up.right")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(Theme.accent)
+                        }
+                        .frame(minHeight: 44)
+                    }
+                    .accessibilityHint("Opens in Safari")
+                }
+
                 if model.isAdmin {
                     Button {
                         editing = true
