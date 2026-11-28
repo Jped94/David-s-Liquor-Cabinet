@@ -82,8 +82,10 @@ final class CollectionModel {
         }
         hasCredentials = CredentialStore.load() != nil
         localEdits = (try? legacyEditStore?.load()) ?? [:]
-        // The one-off cleanup of the pre-server cache.
-        try? SnapshotStore.defaultStore().delete()
+        // Clean up the cache from before the shared server.
+        if let support = try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: false) {
+            try? FileManager.default.removeItem(at: support.appendingPathComponent("collection.json"))
+        }
 
         if let url = cacheURL, let cached = MenuCache.load(from: url), !cached.menu.products.isEmpty {
             cache = cached

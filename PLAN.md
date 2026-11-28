@@ -138,194 +138,162 @@ when it isn't sure.
 ## Architecture
 
 ```
-DavidsLiquorCabinet/            Xcode project (iPadOS 17+, SwiftUI)
-├── App/                        App target: views, navigation, theming
-└── Packages/CellarKit/         Local Swift package (unit-tested)
-    ├── CellarTrackerClient     URLSession fetch, auth/HTML detection, retries
-    ├── CSVParser               RFC-4180 parser, windows-1252 decoding
-    ├── Models                  BottleRecord (row) → MenuItem (grouped by iWine)
-    ├── Enrichment              Rules (category/region/ABV/age/opened)
-    │                           + ClaudeEnricher (Messages API, JSON schema)
-    └── Sync                    CellarTracker client, JSON snapshot cache, sync policy
+App/                        iPad app (SwiftUI, iPadOS 17+)
+Packages/CellarKit/         Shared Swift logic (unit-tested on Linux and macOS)
+  CSV/, Export/             CSV parser, windows-1252 export decoding
+  Models/, Enrichment/      Bottles → menu items, rules, house mapping, wording
+  Server/                   Cabinet server client, menu format, sync upload, report
+server/                     Cloudflare Worker (TypeScript)
+  src/                      API: sessions, menu, edits, sync download/commit
+  src/rules/                TypeScript port of the rules (used by the web page)
+  web/                      Admin web page (Preact), served by the Worker
+  migrations/               D1 (SQLite) schema
 ```
 
-- **JSON files** in Application Support hold the cache. `collection.json` is
-  the last good CellarTracker download, and the menu opens from it instantly
-  and offline. Overrides (and later Claude enrichment) are stored separately,
-  keyed by `iWine`, so they survive resyncs. Bottles that disappear from CT
-  drop off the menu, but their overrides are kept in case the bottles come
-  back. This replaced the original SwiftData plan: the data is about 1,600
-  read-only rows, so a file is simpler and can be tested on Linux.
-- **Keychain** holds the CT credentials and the admin PIN.
-- **No backend (v1).** The app talks to CellarTracker directly over HTTPS.
-  v2 adds a shared Cloudflare backend; see below.
-- A sanitized CSV fixture (prices and stores stripped) drives the parser and
-  classifier tests.
+**One copy of the truth.** CellarTracker is the source of the collection.
+The cabinet server holds the latest synced copy plus the owner's edits, and
+every iPad and the web page read it from there.
 
-## Shared database & web (v2)
+**The same rules in two languages.** The menu rules are Swift (CellarKit,
+used by the iPad) and TypeScript (`server/src/rules`, used by the web page).
+`Fixtures/golden.json` is written by the Swift tests and must be reproduced
+exactly by the TypeScript tests, so the two can't drift apart.
 
-Several iPads (3–4) and a web page for David and family share one copy of
-the collection, edits and photos. Syncing is manual.
+## Shared server (v2) ✅
 
-### Stack: Cloudflare (free tier)
+Several iPads (3–4) and an admin web page share one collection, set of edits
+and (later) photos. Syncing is manual.
+
+### Stack: Cloudflare, free tier
 
 | Piece | Cloudflare product | Notes |
 |---|---|---|
-| API + web page | **Worker** (TypeScript) with static assets | No server to keep running |
-| Data | **D1** (SQLite) | Under 5 MB of data; the free tier allows 500 MB |
-| Photos | **R2** | About 200–400 KB per resized photo, so 1 GB at most; the free tier allows about 10 GB with no download fees |
+| API + admin web page | **Worker** (TypeScript) + static assets | `owls-perch-lc.josh-090.workers.dev` |
+| Data | **D1** (SQLite) | Under 5 MB; the free tier allows 500 MB |
+| Photos (planned) | **R2** | About 200–400 KB per resized photo; free tier about 10 GB |
 
-Expected cost: $0 a month. The $5 Workers Paid plan is the fallback if
-limits ever bite.
+The free plan allows about 10 ms of CPU per request, so the server never
+parses the CellarTracker export itself (that takes about 50 ms). See Sync.
 
-### Sync: pass-through credentials, never stored
+### Sync: credentials passed through, parsing on the device
 
 1. An admin presses **Sync** on an iPad or the web page. The CellarTracker
-   login comes from the iPad Keychain or the browser's password manager.
-2. It is sent over HTTPS to `POST /api/sync`. The Worker downloads the export
-   once, then drops the login. It is never written to D1, logs or error text.
-3. The Worker decodes the windows-1252 export, parses it and derives each
-   product's menu fields (category, region, Scotch style, ABV, age, title and
-   subtitle), replaces the stored bottles, and returns the sync report.
+   login comes from that iPad's Keychain or the browser's password manager.
+2. `POST /api/sync/download`: the Worker fetches the export with that login
+   (browsers can't call CellarTracker directly), then drops the login. It's
+   never stored, logged or included in errors.
+3. The device parses the export and builds the menu and the sync report
+   (CellarKit on the iPad, `server/src/rules` on the web page).
+4. `POST /api/sync/commit`: the Worker checks the upload (about 3 ms) and
+   stores it pre-serialized, in chunks, so serving it costs almost nothing.
 
-A browser page can't call CellarTracker itself because CT doesn't allow
-cross-site requests, so the Worker does the fetch.
+Pending ("on order") bottles, prices, stores and purchase details are never
+uploaded.
 
-**One copy of the rules.** The parsing and classification rules move from
-CellarKit (Swift) to the Worker (TypeScript). To keep them identical:
+### Access
 
-- a Swift test writes a **golden file** with the derived fields for every
-  product in the sanitized fixture;
-- the TypeScript tests must reproduce it exactly.
-
-Once the iPads read from the server, the Swift rules are only kept for the
-golden file and offline sample data.
-
-### Access: two shared passcodes
-
-- **Guest passcode** reads the menu. Each iPad enters it once.
-- **Admin passcode** additionally allows sync, edits and photos. It replaces
-  the local admin toggle.
-- `POST /api/session` exchanges a passcode for a signed token (HMAC; the
-  secret is a Worker secret). The iPad keeps the token in the Keychain; the
-  web page keeps it in an HttpOnly cookie. Failed attempts are rate-limited.
-- Passcodes are Worker secrets. They are never put in the repo or in chat.
+- **The iPad app has a built-in read key** (the `GUEST_PASSCODE` secret, put
+  in the git-ignored `Config/Secrets.xcconfig`), so guests are never asked
+  for a passcode.
+- **The admin passcode** unlocks admin mode on an iPad (until the app closes)
+  and is the only way into the web page.
+- `POST /api/session` turns a passcode into a signed token (HMAC, one year):
+  a Bearer token on iPads and an HttpOnly cookie on the web. Wrong passcodes
+  are rate-limited.
 
 ### Data model (D1)
 
 | Table | Contents |
 |---|---|
-| `bottles` | One row per CT inventory row from the latest sync: iWine, location, bin, quantity, pending, note, size, community score. **No prices, stores or purchase data are stored.** |
-| `products` | One row per iWine: CT name fields plus derived fields (category, region, style, ABV, age, title, subtitle). Rebuilt on each sync. |
-| `overrides` | The owner's edits per iWine (same fields as `ItemOverride`), updated time and device. Kept even when a product leaves CT. |
-| `photos` | iWine → R2 key, size and updated time. |
-| `syncs` | Time, counts and the sync report JSON, for history. |
-| `descriptions` | Later: Claude drafts per iWine, frozen once written. |
+| `menu_parts` | The latest sync: products and bottles as JSON, in chunks |
+| `overrides` | The owner's edits per iWine. Kept even when a product leaves CT. |
+| `syncs` | Time, counts and the report of each sync |
+| `meta` | The menu version (its ETag) |
+| `login_attempts` | Failed passcodes per address, for rate limiting |
 
 ### API
 
 | Endpoint | Who | Purpose |
 |---|---|---|
-| `POST /api/session` | anyone | Passcode → token |
-| `GET /api/menu` | guest | Products, bottles, overrides and photo refs in one JSON, with an ETag so unchanged menus cost nothing |
-| `POST /api/sync` | admin | Pass-through CT sync; returns the report |
-| `PUT /api/items/:iWine/override` | admin | Save or clear an edit |
-| `PUT /api/items/:iWine/photo` | admin | Upload a resized JPEG (the client resizes it to about 1200px) |
-| `GET /api/photos/:key` | guest | Photo from R2, cacheable |
-| `GET /api/syncs` | admin | Recent sync reports |
+| `POST/GET/DELETE /api/session` | anyone | Sign in, check the role, sign out |
+| `GET /api/menu` | guest | Products, bottles and edits, with an ETag |
+| `POST /api/sync/download` | admin | Pass-through CellarTracker export |
+| `POST /api/sync/commit` | admin | Store a synced menu and its report |
+| `PUT/DELETE /api/items/:iWine/override` | admin | Save or clear an edit |
+| `GET /api/syncs` | admin | The last 20 sync reports |
 
-### Clients
+### Conflicts
 
-- **iPad:** reads `/api/menu`, caches it as JSON for offline and instant
-  launch, and refreshes on launch, foreground and pull-to-refresh. The house
-  and hidden-location choices stay per iPad. Photos are cached on the device.
-  A one-time admin action uploads the edits already saved on David's iPad.
-- **Web:** a static page in the same paper-menu style. It has the menu, search
-  and house filter, and admin sync plus the report. Editing on the web comes
-  later.
-
-### Build order
-
-1. **Rules port:** the golden file from Swift, then the TypeScript
-   parser and rules, which must reproduce it.
-2. **Worker:** D1 schema and migrations, the passcode session, `/api/menu`
-   and `/api/sync`, with tests run locally (Miniflare).
-3. **Deploy** (needs the setup below): a GitHub Action deploys on push.
-4. **iPad client:** reads from the server, plus passcode entry, edits
-   through the API, and migrating existing edits.
-5. **Web page.**
-6. **Photos:** "Add photo" in admin, R2 upload, and on-device caching.
-7. **Claude descriptions** (Anthropic key as a Worker secret).
-
-### Setup the owner does (about 20 minutes, once)
-
-1. Create a free Cloudflare account. Whoever owns it controls the data.
-2. Create an API token from the "Edit Cloudflare Workers" template, with D1
-   and R2 access added.
-3. Add it to the GitHub repo secrets as `CLOUDFLARE_API_TOKEN`, along with
-   `CLOUDFLARE_ACCOUNT_ID`.
-4. Set the two passcodes and the token-signing secret with
-   `wrangler secret put` (exact commands are in the README).
-5. Later: an Anthropic API key for descriptions.
+- **Two syncs at once:** both upload the same CellarTracker data; the last
+  one wins and nothing is lost.
+- **A sync and an edit:** they're stored separately and never collide.
+- **Two edits to the same bottle at once:** the last save wins (rare with one
+  or two admins; an "edited elsewhere, reload" check could be added).
+- **Offline:** reading uses the cached menu; saving needs a connection.
 
 ## App structure
 
-**Guest mode** (default):
-- Home: a "Now Pouring" shelf (opened bottles), a featured shelf, and category tiles.
-- Category → filterable list/grid: sub-region, age, ABV range, opened only,
-  and sort by name, age or ABV.
-- Expression detail: name, distillery, style, region, age, ABV, vintage, size,
-  bottle notes, description and photo.
-- Global search.
-- No prices, stores, purchase dates or bin details.
+**Guest view** (default):
+- Cover: masthead, Tonight's Pours (open bottles), the list of spirits.
+- Category pages with sections (Scotch by region, American Whiskey by style,
+  agave by spirit, rum by country) or A–Z, a Scotch style filter, "open
+  bottles only", and an inline search.
+- House selector, search and settings on every page.
+- Tasting card: age, strength, sealed/open counts, description, style,
+  origin, bottle size, community score, where the bottles are, and a link to
+  the product's CellarTracker page.
 
-**Admin mode** (PIN / Face ID):
-- CellarTracker login, sync status, manual refresh.
-- Per-expression overrides: description, photo (camera/library), category,
-  featured, hidden.
-- Settings: which locations count as "this house", and the theme.
+**Admin mode** (admin passcode):
+- Sync from CellarTracker, sync report.
+- Edit any bottle: title, second line, category, Scotch region and style,
+  ABV, age, style, description, hide.
+- One-time upload of edits saved on an iPad before the shared server.
 
-Kiosk use: iPad **Guided Access** locks the iPad to the app for parties. No
-extra code is needed.
+**Admin web page:** sign in, sync and sync history, browse and filter the
+whole collection, edit any bottle.
 
-## Phases
+Kiosk use: iPad **Guided Access** locks the iPad to the app for parties.
 
-1. **Foundation** ✅: Xcode project, CellarKit package, CSV parser +
-   windows-1252 + enrichment, with tests against the sample fixture.
-2. **Sync** (in progress): CellarTracker client, Keychain login, JSON cache, refresh,
-   error states (bad login, offline, CT down), house filtering.
-2b. **Claude enrichment**: enrichment queue for new `iWine`s, schema-constrained
-   calls, stored results, an admin "Regenerate" action, and description switches.
-3. **Guest menu MVP**: home, categories, list, detail, search.
-4. **Admin + overrides**: PIN gate, edit description/photo/category/featured/hidden.
-5. **Polish**: visual design pass (typographic menu look, category colors),
-   empty/loading states, iPad landscape + portrait, accessibility.
-6. **Distribution**: TestFlight build on David's iPad via the Apple Developer account.
+## Status
 
-Optional later: "Surprise me" pick, flight builder (pick 3–4 to taste side by
-side), AI-drafted tasting descriptions that David reviews and edits.
+Done:
+- Foundation: CellarKit, parser, rules and tests against the real export.
+- Printed-menu design, category pages, tasting card, search, houses and
+  locations, sync report.
+- Shared Cloudflare server, iPad client, admin web page.
+
+Next:
+1. **Distribution:** the $99 Apple Developer account, then installs from
+   Xcode last a year (registered iPads).
+2. **Open vs. sealed:** separate from location (see Decisions).
+3. **Photos:** "Add photo" in admin, stored in R2, cached on each iPad.
+4. **Tasting notes:** Claude-written notes from its own knowledge (needs an
+   Anthropic API key). Community notes only with CellarTracker's written
+   permission (their terms, sections 3 and 9).
+5. Optional: "edited elsewhere" check for edits; assigning locations to
+   houses from Settings.
 
 ## Decisions
 
-1. **Houses:** Estancia and Bedford. Each iPad filters to its own house (see above).
-2. **Descriptions:** start with AI drafts. They can be edited or hidden per
-   bottle, and switched off globally.
-3. **Photos:** none in v1. In v2, David adds them from the iPad (stored in R2).
-4. **Guest extras:** guests see community scores and sealed/open bottle
-   counts. "On order" bottles are hidden. Still to confirm: what
-   David uses Pending for.
+1. **Houses:** Estancia = Estancia, Estancia Open. Bedford = Owl's Perch,
+   Open in Owl's perch, Cellar, Basement, 194 Opened.
+2. **Descriptions:** start with AI drafts, editable and removable per bottle.
+3. **Photos:** David adds them from the iPad, stored in R2.
+4. **Guests see** community scores and sealed/open counts. Pending bottles
+   are hidden.
+5. **Backend:** Cloudflare Worker + D1 (+ R2 later), on the free tier.
+6. **Sync:** manual, from any iPad or the web page. The CT login is passed
+   through for each sync and never stored on the server.
+7. **Access:** built-in read key for the iPad app; the admin passcode for
+   admin mode and the web page.
+8. **"View on CellarTracker":** shown to everyone.
+9. **Open vs. sealed:** currently read from the location name ("Open in
+   Owl's perch"), because CellarTracker has no open/sealed field. To be
+   separated from location (pending the owner's choice of approach).
 
 ## Notes
 
-- Building requires the Mac + Xcode. The CellarKit logic can be developed and
-  tested anywhere Swift runs.
-- Never commit real exports. `*.csv` is git-ignored, and only sanitized fixtures
-  go in the repo.
-
-## Decisions (v2)
-
-5. **Backend:** Cloudflare Worker + D1 + R2, on the free tier.
-6. **Sync:** manual, from any iPad or the web page. CT credentials are passed
-   through for each sync and never stored on the server.
-7. **Access:** shared guest and admin passcodes. The web page is for David
-   and family only.
+- Building the app requires the Mac + Xcode. CellarKit and the server can be
+  developed and tested anywhere.
+- Never commit real exports. `*.csv` is git-ignored, and only sanitized
+  fixtures go in the repo.

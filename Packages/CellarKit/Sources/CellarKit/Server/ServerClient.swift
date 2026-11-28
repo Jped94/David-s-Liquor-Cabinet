@@ -3,6 +3,19 @@ import Foundation
 import FoundationNetworking
 #endif
 
+/// A CellarTracker login. It lives only in the Keychain of the iPad that
+/// syncs, and is sent to the cabinet server for each sync (used once to
+/// download the export, never stored there).
+public struct CellarTrackerCredentials: Sendable, Hashable, Codable {
+    public var username: String
+    public var password: String
+
+    public init(username: String, password: String) {
+        self.username = username
+        self.password = password
+    }
+}
+
 /// Failures talking to the shared server. Messages are safe to show.
 public enum ServerError: Error, Equatable, Sendable, LocalizedError {
     /// No valid session: the passcode or key is wrong or has expired (401).
@@ -130,7 +143,7 @@ public struct ServerClient: Sendable {
         do {
             response = try await sender.send(request)
         } catch let error as URLError {
-            throw ServerError.network(CellarTrackerClient.describe(error))
+            throw ServerError.network(Self.describe(error))
         } catch is CancellationError {
             throw CancellationError()
         } catch {
@@ -144,6 +157,18 @@ public struct ServerClient: Sendable {
         case 401: throw ServerError.unauthorized(message)
         case 403: throw ServerError.forbidden(message)
         default: throw ServerError.server(status: response.statusCode, message: message)
+        }
+    }
+
+    /// A short reason for a transport error, without the URL.
+    static func describe(_ error: URLError) -> String {
+        switch error.code {
+        case .notConnectedToInternet, .networkConnectionLost: "no internet connection"
+        case .timedOut: "the request timed out"
+        case .cannotFindHost, .dnsLookupFailed: "couldn't find the server"
+        case .cannotConnectToHost: "couldn't connect to the server"
+        case .secureConnectionFailed, .serverCertificateUntrusted: "secure connection failed"
+        default: "network error \(error.code.rawValue)"
         }
     }
 
